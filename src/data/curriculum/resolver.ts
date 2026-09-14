@@ -43,6 +43,9 @@ export interface ResolveCurriculumParams {
   subjectInput?: string;
   schoolWeeksPerYear?: number;
   actualWeeksProvenance?: 'CALENDAR' | 'MANUAL_VALIDATED';
+  actualWeeklyJP?: number;
+  actualScheduledAnnualJP?: number;
+  weeklyJPSource?: 'ACTUAL_SCHEDULE' | 'REFERENCE_EQUIVALENT';
 }
 
 export interface ParsedAcademicYear {
@@ -219,23 +222,45 @@ export function resolveCurriculumContext(
   const regulationSources = getRegulationSources(matchedRule.regulationIds);
 
   // 6. Pemisahan Tegas JP Normatif Regulasi vs JP Tersedia Aktual Sekolah
-  // actualAvailableAnnualJP HANYA dihitung bila schoolWeeksPerYear tersedia secara valid
-  // JANGAN default ke referenceWeeksPerYear!
+  // actualAvailableAnnualJP HANYA dihitung bila terdapat jadwal aktual sekolah yang eksplisit:
+  // - actualScheduledAnnualJP (paling kuat)
+  // - ATAU (actualWeeklyJP + valid schoolWeeksPerYear) jika weeklyJPSource !== 'REFERENCE_EQUIVALENT'
+  // JANGAN PERNAH gunakan derivedWeeklyJP (normatif) untuk menghitung actualAvailableAnnualJP,
+  // baik untuk allocationMode 'ANNUAL' maupun 'WEEKLY_EQUIVALENT'!
+
   const hasValidActualWeeks =
     schoolWeeksPerYear != null &&
     typeof schoolWeeksPerYear === 'number' &&
     schoolWeeksPerYear > 0;
 
-  const actualAvailableAnnualJP =
-    hasValidActualWeeks && matchedRule.derivedWeeklyJP != null
-      ? schoolWeeksPerYear * matchedRule.derivedWeeklyJP
-      : null;
+  const allocationMode =
+    matchedRule.allocationMode ||
+    (matchedRule.derivedWeeklyJP && matchedRule.derivedWeeklyJP % 1 !== 0
+      ? 'ANNUAL'
+      : 'WEEKLY_EQUIVALENT');
+
+  let actualAvailableAnnualJP: number | null = null;
+  let resolvedProvenance: 'CALENDAR' | 'MANUAL_VALIDATED' | undefined = undefined;
+
+  if (params.actualScheduledAnnualJP != null && typeof params.actualScheduledAnnualJP === 'number') {
+    actualAvailableAnnualJP = params.actualScheduledAnnualJP;
+    resolvedProvenance = actualWeeksProvenance || 'MANUAL_VALIDATED';
+  } else if (
+    params.actualWeeklyJP != null &&
+    typeof params.actualWeeklyJP === 'number' &&
+    params.weeklyJPSource !== 'REFERENCE_EQUIVALENT' &&
+    hasValidActualWeeks
+  ) {
+    actualAvailableAnnualJP = schoolWeeksPerYear * params.actualWeeklyJP;
+    resolvedProvenance = actualWeeksProvenance || 'CALENDAR';
+  } else {
+    // Jika tidak ada actualWeeklyJP atau actualScheduledAnnualJP eksplisit:
+    // derivedWeeklyJP normatif BUKAN jadwal aktual sekolah, maka actualAvailableAnnualJP = null
+    actualAvailableAnnualJP = null;
+    resolvedProvenance = undefined;
+  }
 
   const actualEffectiveWeeks = hasValidActualWeeks ? schoolWeeksPerYear : null;
-  const resolvedProvenance =
-    actualAvailableAnnualJP !== null
-      ? (actualWeeksProvenance || 'MANUAL_VALIDATED')
-      : undefined;
 
   const phase = matchedRule.phase || getPhaseForGrade(grade) || 'A';
 
@@ -254,11 +279,7 @@ export function resolveCurriculumContext(
     referenceWeeksPerYear: matchedRule.referenceWeeksPerYear,
     minutesPerJP: matchedRule.minutesPerJP,
     derivedWeeklyJP: matchedRule.derivedWeeklyJP,
-    allocationMode:
-      matchedRule.allocationMode ||
-      (matchedRule.derivedWeeklyJP && matchedRule.derivedWeeklyJP % 1 !== 0
-        ? 'ANNUAL'
-        : 'WEEKLY_EQUIVALENT'),
+    allocationMode,
     actualAvailableAnnualJP,
     actualEffectiveWeeks,
     actualWeeksProvenance: resolvedProvenance,

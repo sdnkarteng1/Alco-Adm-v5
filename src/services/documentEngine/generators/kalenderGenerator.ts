@@ -80,11 +80,11 @@ export async function generateKalenderAkademik(context: DocumentGenerationContex
     const avail = calculateAvailableJP({
       subjectWeeklyJP: weeklyJP || 0,
       effectiveLearningDays: effectiveDaysCount,
-      schoolDaysPerWeek: calendar.schoolDaysPerWeek || 5,
+      schoolDaysPerWeek: calendar.schoolDaysPerWeek,
       semester: calendar.semester,
       academicYear: calendar.academicYear,
     });
-    effectiveWeeksCount = avail.effectiveWeeksRounded;
+    effectiveWeeksCount = avail.effectiveWeeksRounded ?? 0;
     availableJPCount = weeklyJP !== null ? avail.availableJP : null;
   }
 
@@ -109,7 +109,7 @@ export async function generateKalenderAkademik(context: DocumentGenerationContex
         children: [
           createTableDataCell('2', 10, AlignmentType.CENTER),
           createTableDataCell('Hari Sekolah per Minggu', 60),
-          createTableDataCell(`${calendar?.schoolDaysPerWeek || 5} Hari`, 30, AlignmentType.CENTER),
+          createTableDataCell(`${calendar?.schoolDaysPerWeek ? `${calendar.schoolDaysPerWeek} Hari` : 'Belum diatur'}`, 30, AlignmentType.CENTER),
         ],
       }),
       new TableRow({

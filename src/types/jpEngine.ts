@@ -204,20 +204,32 @@ export interface EffectiveDayResult {
 }
 
 /**
+ * Hasil Perhitungan Minggu Efektif Ekuivalen
+ */
+export interface EffectiveWeeksResult {
+  status: 'RESOLVED' | 'UNRESOLVED';
+  effectiveWeeksEquivalent: number | null;
+  effectiveWeeksRounded: number | null;
+  unresolvedReason?: string;
+}
+
+/**
  * Hasil Perhitungan JP Tersedia
  */
 export interface AvailableJPResult {
-  subjectWeeklyJP: number;
-  effectiveLearningDays: number;
-  schoolDaysPerWeek: number;
-  effectiveWeeksEquivalent: number;
-  effectiveWeeksRounded: number;
-  availableJP: number;
+  status?: 'RESOLVED' | 'UNRESOLVED';
+  subjectWeeklyJP?: number | null;
+  effectiveLearningDays?: number | null;
+  schoolDaysPerWeek?: number | null;
+  effectiveWeeksEquivalent?: number | null;
+  effectiveWeeksRounded?: number | null;
+  availableJP: number | null;
   formula: string;
   formulaCalculation: string;
   isCapacityExceeded?: boolean;
   capacityWarning?: string;
   officialAnnualJP?: number;
+  unresolvedReason?: string;
   details?: {
     semester?: string;
     academicYear?: string;
@@ -227,9 +239,9 @@ export interface AvailableJPResult {
   };
 
   /** @deprecated Compatibility alias */
-  jpPerWeek?: number;
+  jpPerWeek?: number | null;
   /** @deprecated Compatibility alias */
-  effectiveWeeks?: number;
+  effectiveWeeks?: number | null;
 }
 
 /** @deprecated Compatibility alias for AvailableJPResult */

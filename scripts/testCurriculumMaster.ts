@@ -177,22 +177,56 @@ async function runCurriculumMasterTests() {
     'Coding & AI SD Kelas 4 aktif dan teresolusi untuk TA 2026/2027'
   );
 
-  // TEST 7: Pemisahan JP Normatif Tahunan vs JP Ekuivalen Mingguan vs JP Tersedia Aktual
-  console.log('\n--- 7. Pemisahan Tiga Lapisan JP ---');
-  // Contoh: Matematika Kelas 4 (Normatif 36 minggu = 180 JP, Mingguan = 5 JP)
-  // Sekolah memiliki 34 minggu efektif aktual di kalendernya
-  const matGrade4WithActualWeeks = resolveCurriculumContext({
+  // TEST 7: Pemisahan Tiga Lapisan JP & Aturan Ketat Aktual
+  console.log('\n--- 7. Pemisahan Tiga Lapisan JP & Aturan Ketat Aktual ---');
+  // Kasus A: Matematika Kelas 4 tanpa jadwal mingguan aktual eksplisit (hanya minggu efektif) -> actualAvailableAnnualJP harus null
+  const matGrade4OnlyWeeks = resolveCurriculumContext({
     grade: 4,
     subjectInput: 'Matematika',
     schoolWeeksPerYear: 34,
   });
-  assert(matGrade4WithActualWeeks !== null, 'Matematika Kelas 4 ditemukan');
-  assert(matGrade4WithActualWeeks?.intrakurikulerAnnualJP === 180, 'JP Normatif Tahunan = 180 JP');
-  assert(matGrade4WithActualWeeks?.derivedWeeklyJP === 5, 'JP Ekuivalen Mingguan = 5 JP/minggu');
-  assert(matGrade4WithActualWeeks?.actualAvailableAnnualJP === 170, 'JP Tersedia Aktual Sekolah (34 × 5) = 170 JP');
+  assert(matGrade4OnlyWeeks !== null, 'Matematika Kelas 4 ditemukan');
+  assert(matGrade4OnlyWeeks?.intrakurikulerAnnualJP === 180, 'JP Normatif Tahunan = 180 JP');
+  assert(matGrade4OnlyWeeks?.derivedWeeklyJP === 5, 'JP Ekuivalen Mingguan = 5 JP/minggu');
   assert(
-    matGrade4WithActualWeeks?.intrakurikulerAnnualJP !== matGrade4WithActualWeeks?.actualAvailableAnnualJP,
-    'JP Normatif Tahunan (180 JP) dan JP Aktual Sekolah (170 JP) terpisah dengan tepat dan tidak saling menimpa'
+    matGrade4OnlyWeeks?.actualAvailableAnnualJP === null,
+    'Jika hanya tersedia schoolWeeksPerYear tanpa actualWeeklyJP eksplisit, actualAvailableAnnualJP bernilai null (tidak menggunakan derivedWeeklyJP)'
+  );
+
+  // Kasus B: Matematika Kelas 4 dengan jadwal mingguan aktual eksplisit (actualWeeklyJP: 5, weeklyJPSource: 'ACTUAL_SCHEDULE')
+  const matGrade4WithActualSchedule = resolveCurriculumContext({
+    grade: 4,
+    subjectInput: 'Matematika',
+    schoolWeeksPerYear: 34,
+    actualWeeklyJP: 5,
+    weeklyJPSource: 'ACTUAL_SCHEDULE',
+  });
+  assert(
+    matGrade4WithActualSchedule?.actualAvailableAnnualJP === 170,
+    'Jika actualWeeklyJP eksplisit (5) dan schoolWeeksPerYear (34) diberikan, actualAvailableAnnualJP dihitung = 170'
+  );
+
+  // Kasus C: allocationMode ANNUAL (misal Sejarah SMA 10) dengan schoolWeeksPerYear saja -> actualAvailableAnnualJP = null
+  const sejarahOnlyWeeks = resolveCurriculumContext({
+    grade: 10,
+    subjectCode: 'SEJARAH',
+    schoolWeeksPerYear: 34,
+  });
+  assert(
+    sejarahOnlyWeeks?.actualAvailableAnnualJP === null,
+    'allocationMode ANNUAL dengan hanya schoolWeeksPerYear menghasilkan actualAvailableAnnualJP = null (BLOCKER 1 & 2)'
+  );
+
+  // Kasus D: allocationMode ANNUAL dengan actualScheduledAnnualJP eksplisit = 50 JP
+  const sejarahWithScheduledAnnual = resolveCurriculumContext({
+    grade: 10,
+    subjectCode: 'SEJARAH',
+    schoolWeeksPerYear: 34,
+    actualScheduledAnnualJP: 50,
+  });
+  assert(
+    sejarahWithScheduledAnnual?.actualAvailableAnnualJP === 50,
+    'allocationMode ANNUAL dengan actualScheduledAnnualJP = 50 menghasilkan actualAvailableAnnualJP = 50'
   );
 
   // TEST 8: Kompatibilitas jpEngine (getSubjectJP)
@@ -407,11 +441,13 @@ async function runCurriculumMasterTests() {
     grade: 7,
     subjectCode: 'BINDO',
     schoolWeeksPerYear: 35,
+    actualWeeklyJP: 5,
+    weeklyJPSource: 'ACTUAL_SCHEDULE',
     actualWeeksProvenance: 'CALENDAR',
   });
   assert(
     resolvedWithWeeks !== null && resolvedWithWeeks.actualAvailableAnnualJP === 35 * 5,
-    'Jika schoolWeeksPerYear disediakan (35), actualAvailableAnnualJP dihitung akurat (35 × 5 = 175)'
+    'Jika schoolWeeksPerYear disediakan (35) bersama actualWeeklyJP eksplisit (5), actualAvailableAnnualJP dihitung akurat (35 × 5 = 175)'
   );
   assert(
     resolvedWithWeeks !== null && resolvedWithWeeks.actualWeeksProvenance === 'CALENDAR',

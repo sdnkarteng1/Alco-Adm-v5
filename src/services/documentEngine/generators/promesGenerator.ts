@@ -59,7 +59,7 @@ export async function generatePROMES(context: DocumentGenerationContext): Promis
     const availableJP = calculateAvailableJP({
       subjectWeeklyJP: weeklyJP || 0,
       effectiveLearningDays: effectiveDaysCount,
-      schoolDaysPerWeek: calendar.schoolDaysPerWeek || 5,
+      schoolDaysPerWeek: calendar.schoolDaysPerWeek,
       semester: semesterLabel,
       academicYear: academicSetting.academicYear,
       level: academicSetting.level,
@@ -67,8 +67,8 @@ export async function generatePROMES(context: DocumentGenerationContext): Promis
       subject: academicSetting.subject,
       officialAnnualJP: officialRule.annualJP,
     });
-    effectiveWeeksCount = availableJP.effectiveWeeksRounded;
-    availableJPCount = availableJP.availableJP;
+    effectiveWeeksCount = availableJP.effectiveWeeksRounded ?? 0;
+    availableJPCount = availableJP.availableJP ?? 0;
   } else {
     calendarStatusNote = 'Data kalender belum dikonfigurasi pada sistem';
   }

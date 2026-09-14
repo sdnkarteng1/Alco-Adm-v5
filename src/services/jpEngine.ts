@@ -646,18 +646,33 @@ export function getEffectiveWeeksList(
 
 /**
  * Menghitung Minggu Efektif Ekuivalen dari Hari Efektif Belajar
+ * Wajib menerima schoolDaysPerWeek yang valid (5 atau 6). Jika tidak valid/undefined/null, mengembalikan status UNRESOLVED.
  */
 export function calculateEffectiveWeeks(
   effectiveLearningDays: number,
-  schoolDaysPerWeek: number = 5
+  schoolDaysPerWeek?: number | null
 ): {
-  effectiveWeeksEquivalent: number;
-  effectiveWeeksRounded: number;
+  status: 'RESOLVED' | 'UNRESOLVED';
+  effectiveWeeksEquivalent: number | null;
+  effectiveWeeksRounded: number | null;
+  unresolvedReason?: string;
 } {
-  const daysPerWeek = Math.max(1, schoolDaysPerWeek || 5);
-  const equivalent = Math.max(0, effectiveLearningDays) / daysPerWeek;
+  const validDays =
+    schoolDaysPerWeek === 5 || schoolDaysPerWeek === 6 ? schoolDaysPerWeek : null;
+
+  if (!validDays) {
+    return {
+      status: 'UNRESOLVED',
+      effectiveWeeksEquivalent: null,
+      effectiveWeeksRounded: null,
+      unresolvedReason: 'Hari sekolah per minggu (schoolDaysPerWeek) harus bernilai 5 atau 6.',
+    };
+  }
+
+  const equivalent = Math.max(0, effectiveLearningDays) / validDays;
   const rounded = Math.round(equivalent * 10) / 10;
   return {
+    status: 'RESOLVED',
     effectiveWeeksEquivalent: equivalent,
     effectiveWeeksRounded: rounded,
   };
@@ -665,29 +680,88 @@ export function calculateEffectiveWeeks(
 
 /**
  * Menghitung Alokasi Jam Pelajaran (JP) Tersedia dalam satu semester
- * Formula: JP Mingguan × (Hari Efektif Belajar ÷ Hari Sekolah per Minggu)
+ * Formula: JP Mingguan Aktual × (Hari Efektif Belajar ÷ Hari Sekolah per Minggu)
+ * Wajib menerima schoolDaysPerWeek valid (5 atau 6) dan weeklyJPSource !== 'REFERENCE_EQUIVALENT'.
  */
 export function calculateAvailableJP(params: {
-  subjectWeeklyJP: number;
-  effectiveLearningDays: number;
-  schoolDaysPerWeek?: number;
+  subjectWeeklyJP?: number | null;
+  effectiveLearningDays?: number | null;
+  schoolDaysPerWeek?: number | null;
+  weeklyJPSource?: 'ACTUAL_SCHEDULE' | 'REFERENCE_EQUIVALENT';
+  actualScheduledAnnualJP?: number | null;
   semester?: string;
   academicYear?: string;
   level?: string;
   grade?: string;
   subject?: string;
-  officialAnnualJP?: number;
+  officialAnnualJP?: number | null;
 }): AvailableJPResult {
-  const daysPerWeek = Math.max(1, params.schoolDaysPerWeek || 5);
+  const validDays =
+    params.schoolDaysPerWeek === 5 || params.schoolDaysPerWeek === 6
+      ? params.schoolDaysPerWeek
+      : null;
+
+  if (!validDays) {
+    return {
+      status: 'UNRESOLVED',
+      subjectWeeklyJP: params.subjectWeeklyJP ?? null,
+      effectiveLearningDays: params.effectiveLearningDays ?? null,
+      schoolDaysPerWeek: null,
+      effectiveWeeksEquivalent: null,
+      effectiveWeeksRounded: null,
+      availableJP: null,
+      unresolvedReason:
+        'Hari sekolah per minggu (schoolDaysPerWeek) belum ditentukan atau tidak valid (harus 5 atau 6 hari).',
+      formula: 'JP Mingguan × (Hari Efektif Belajar ÷ Hari Sekolah/Minggu)',
+      formulaCalculation: 'Data hari sekolah per minggu tidak valid (UNRESOLVED)',
+      jpPerWeek: params.subjectWeeklyJP ?? null,
+      effectiveWeeks: null,
+      officialAnnualJP: params.officialAnnualJP ?? undefined,
+      details: {
+        semester: params.semester,
+        academicYear: params.academicYear,
+        level: params.level,
+        grade: params.grade,
+        subject: params.subject,
+      },
+    };
+  }
+
+  if (params.weeklyJPSource === 'REFERENCE_EQUIVALENT') {
+    return {
+      status: 'UNRESOLVED',
+      subjectWeeklyJP: params.subjectWeeklyJP ?? null,
+      effectiveLearningDays: params.effectiveLearningDays ?? null,
+      schoolDaysPerWeek: validDays,
+      effectiveWeeksEquivalent: null,
+      effectiveWeeksRounded: null,
+      availableJP: null,
+      unresolvedReason:
+        'Alokasi mingguan berasal dari REFERENCE_EQUIVALENT normatif regulasi, bukan jadwal mingguan aktual sekolah (ACTUAL_SCHEDULE).',
+      formula: 'JP Mingguan Aktual × (Hari Efektif Belajar ÷ Hari Sekolah/Minggu)',
+      formulaCalculation: 'Bukan jadwal mingguan aktual sekolah (REFERENCE_EQUIVALENT)',
+      jpPerWeek: params.subjectWeeklyJP ?? null,
+      effectiveWeeks: null,
+      officialAnnualJP: params.officialAnnualJP ?? undefined,
+      details: {
+        semester: params.semester,
+        academicYear: params.academicYear,
+        level: params.level,
+        grade: params.grade,
+        subject: params.subject,
+      },
+    };
+  }
+
   const subjectWeeklyJP = Math.max(0, Number(params.subjectWeeklyJP) || 0);
   const effectiveLearningDays = Math.max(0, Number(params.effectiveLearningDays) || 0);
 
   const { effectiveWeeksEquivalent, effectiveWeeksRounded } = calculateEffectiveWeeks(
     effectiveLearningDays,
-    daysPerWeek
+    validDays
   );
 
-  const exactAvailableJP = subjectWeeklyJP * (effectiveLearningDays / daysPerWeek);
+  const exactAvailableJP = subjectWeeklyJP * (effectiveLearningDays / validDays);
   const availableJP = Math.round(exactAvailableJP);
 
   // Batasi / validasi terhadap kapasitas struktur tahunan resmi
@@ -702,12 +776,13 @@ export function calculateAvailableJP(params: {
   }
 
   const formula = 'JP Mingguan × (Hari Efektif Belajar ÷ Hari Sekolah/Minggu)';
-  const formulaCalculation = `${subjectWeeklyJP} JP/minggu × (${effectiveLearningDays} hari ÷ ${daysPerWeek} hari/minggu) = ${subjectWeeklyJP} × ${effectiveWeeksRounded} = ${availableJP} JP`;
+  const formulaCalculation = `${subjectWeeklyJP} JP/minggu × (${effectiveLearningDays} hari ÷ ${validDays} hari/minggu) = ${subjectWeeklyJP} × ${effectiveWeeksRounded} = ${availableJP} JP`;
 
   return {
+    status: 'RESOLVED',
     subjectWeeklyJP,
     effectiveLearningDays,
-    schoolDaysPerWeek: daysPerWeek,
+    schoolDaysPerWeek: validDays,
     effectiveWeeksEquivalent,
     effectiveWeeksRounded,
     availableJP,
@@ -715,7 +790,7 @@ export function calculateAvailableJP(params: {
     formulaCalculation,
     isCapacityExceeded,
     capacityWarning,
-    officialAnnualJP: params.officialAnnualJP,
+    officialAnnualJP: params.officialAnnualJP ?? undefined,
     details: {
       semester: params.semester,
       academicYear: params.academicYear,
