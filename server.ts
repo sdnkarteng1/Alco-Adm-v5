@@ -43,18 +43,16 @@ async function generateContentWithRetry(params: {
   contents: string;
   config?: any;
 }): Promise<{ text?: string }> {
-  // Ordered by high availability, low latency, and modern Gemini 3 SDK standards
+  // Standard non-paid models ordered by capability and availability
   const modelsToTry = [
     'gemini-3.8-flash',
     'gemini-3.1-flash-lite',
     'gemini-flash-latest',
-    'gemini-3.1-pro-preview',
   ];
   const ai = getAIClient();
   let lastError: any = null;
 
   for (const model of modelsToTry) {
-    // Try up to 2 attempts per model for transient 503/429 spikes
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const response = await ai.models.generateContent({
@@ -68,18 +66,18 @@ async function generateContentWithRetry(params: {
       } catch (err: any) {
         lastError = err;
         const errMsg = (err?.message || String(err)).toLowerCase();
-        console.warn(`[AI Service] Model ${model} (attempt ${attempt + 1}) notice: ${err?.message || err}`);
 
         // If 404, model not found so don't retry same model, move to next model immediately
         if (errMsg.includes('404') || errMsg.includes('not found') || errMsg.includes('no longer available')) {
           break;
         }
 
-        // For temporary 503 high demand or 429 rate limits, wait with brief backoff
+        // For temporary 503 high demand or 429 rate limits, wait with brief backoff and try next attempt or fallback model
         if (errMsg.includes('503') || errMsg.includes('high demand') || errMsg.includes('429') || errMsg.includes('unavailable')) {
-          await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 600));
+          console.info(`[AI Service] Model ${model} returned temporary status (${attempt + 1}/2). Backing off...`);
+          await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 400));
         } else {
-          // For other fatal schema/config errors, break and try next fallback model
+          // For other errors, move to next fallback model
           break;
         }
       }

@@ -97,18 +97,18 @@ export const AdministrationHub: React.FC<AdministrationHubProps> = ({
   cp,
   tp,
   atp,
-  documents,
-  students,
+  documents = [],
+  students = [],
   calendar,
-  calendarDays,
-  timeAllocations,
-  attendanceSessions,
-  attendanceRecords,
-  assessmentCriteria,
-  assessments,
-  assessmentResults,
-  remedials,
-  enrichments,
+  calendarDays = [],
+  timeAllocations = [],
+  attendanceSessions = [],
+  attendanceRecords = [],
+  assessmentCriteria = [],
+  assessments = [],
+  assessmentResults = [],
+  remedials = [],
+  enrichments = [],
   k13Analysis,
   k13KKM,
   initialTab = 'time_planning',
@@ -165,7 +165,7 @@ export const AdministrationHub: React.FC<AdministrationHubProps> = ({
       label: 'Tindak Lanjut',
       sublabel: 'Remedial & Pengayaan',
       icon: LifeBuoy,
-      badge: `${remedials.length + enrichments.length}`,
+      badge: `${(remedials?.length || 0) + (enrichments?.length || 0)}`,
     },
     {
       id: 'export_docs' as AdministrationTab,
@@ -311,11 +311,11 @@ export const AdministrationHub: React.FC<AdministrationHubProps> = ({
             onSaveAssessment={onSaveAssessment}
             onDeleteAssessment={onDeleteAssessment}
             onQuickAddRemedial={(record) => {
-              const updated = [...remedials, record];
+              const updated = [...(remedials || []), record];
               onSaveRemedials(updated);
             }}
             onQuickAddEnrichment={(record) => {
-              const updated = [...enrichments, record];
+              const updated = [...(enrichments || []), record];
               onSaveEnrichments(updated);
             }}
           />

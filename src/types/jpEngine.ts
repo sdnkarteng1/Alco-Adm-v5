@@ -169,6 +169,11 @@ export interface EffectiveDayResult {
     assessments: Array<{ date: string; notes?: string }>;
     nonLearning: Array<{ date: string; notes?: string }>;
   };
+  monthlyBreakdown?: Array<{
+    monthName: string;
+    effectiveDays: number;
+    effectiveWeeks: number;
+  }>;
 }
 
 /**

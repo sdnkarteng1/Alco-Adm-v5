@@ -55,8 +55,8 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
   atp,
   k13Analysis,
   calendar,
-  calendarDays,
-  timeAllocations,
+  calendarDays = [],
+  timeAllocations = [],
   onSaveCalendar,
   onSaveTimeAllocations,
 }) => {
@@ -533,7 +533,7 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
             </div>
 
             {/* Monthly Breakdown Preview */}
-            {effectiveResult.monthlyBreakdown.length > 0 && (
+            {effectiveResult?.monthlyBreakdown && effectiveResult.monthlyBreakdown.length > 0 && (
               <div className="pt-2 border-t border-slate-100">
                 <span className="text-[11px] font-bold text-slate-600 block mb-1.5">Rincian Hari Efektif Bulanan:</span>
                 <div className="grid grid-cols-3 gap-1.5 text-[11px]">

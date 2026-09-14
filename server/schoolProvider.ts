@@ -658,10 +658,13 @@ export class GeminiPrincipalResolver {
     const ai = this.getAIClient();
     if (!ai) return null;
 
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: `Anda adalah asisten verifikasi data resmi pendidikan Indonesia.
+    const modelsToTry = [
+      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-flash-latest',
+    ];
+
+    const prompt = `Anda adalah asisten verifikasi data resmi pendidikan Indonesia.
 Tugas: Cari nama dan NIP Kepala Sekolah resmi yang sedang menjabat untuk satuan pendidikan:
 - Nama Sekolah: ${params.name}
 - NPSN: ${params.npsn || 'Tidak ada'}
@@ -681,34 +684,51 @@ Format JSON yang wajib dikembalikan:
   "source": string,
   "sourceUrl": string,
   "notes": string
-}`,
-      });
+}`;
 
-      let text = response.text || '';
-      if (text.includes('```json')) {
-        text = text.slice(text.indexOf('```json') + 7);
-        if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
-      } else if (text.includes('```')) {
-        text = text.slice(text.indexOf('```') + 3);
-        if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
-      }
-      text = text.trim();
+    for (const model of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+        });
 
-      const parsed = JSON.parse(text);
-      if (parsed && parsed.found && parsed.principalName && parsed.principalName.trim().length > 2) {
-        return {
-          found: true,
-          principalName: parsed.principalName.trim(),
-          principalNip: parsed.principalNip ? parsed.principalNip.trim() : '',
-          principalSource: parsed.source || 'Pencarian Referensi Resmi & Dapodik',
-          principalSourceUrl: parsed.sourceUrl || (params.npsn ? `https://referensi.data.kemendikdasmen.go.id/tabs.php?npsn=${params.npsn}` : undefined),
-          verificationStatus: 'verified',
-          lastVerifiedAt: new Date().toISOString(),
-          message: 'Data kepala sekolah berhasil diverifikasi dari sumber referensi resmi.',
-        };
+        let text = response.text || '';
+        if (text.includes('```json')) {
+          text = text.slice(text.indexOf('```json') + 7);
+          if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
+        } else if (text.includes('```')) {
+          text = text.slice(text.indexOf('```') + 3);
+          if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
+        }
+        text = text.trim();
+
+        const parsed = JSON.parse(text);
+        if (parsed && parsed.found && parsed.principalName && parsed.principalName.trim().length > 2) {
+          return {
+            found: true,
+            principalName: parsed.principalName.trim(),
+            principalNip: parsed.principalNip ? parsed.principalNip.trim() : '',
+            principalSource: parsed.source || 'Pencarian Referensi Resmi & Dapodik',
+            principalSourceUrl: parsed.sourceUrl || (params.npsn ? `https://referensi.data.kemendikdasmen.go.id/tabs.php?npsn=${params.npsn}` : undefined),
+            verificationStatus: 'verified',
+            lastVerifiedAt: new Date().toISOString(),
+            message: 'Data kepala sekolah berhasil diverifikasi dari sumber referensi resmi.',
+          };
+        }
+        // If parsed correctly but not found, no need to retry other models
+        return null;
+      } catch (err: any) {
+        const errMsg = (err?.message || String(err)).toLowerCase();
+        // If temporary 503 spike or 429 rate limit, silently fallback to next model
+        if (errMsg.includes('503') || errMsg.includes('high demand') || errMsg.includes('429') || errMsg.includes('unavailable')) {
+          console.info(`[GeminiPrincipalResolver] Model ${model} unavailable, switching to next fallback model...`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          continue;
+        }
+        // For other non-transient errors, break and return null
+        break;
       }
-    } catch (err) {
-      console.warn('[GeminiPrincipalResolver] Error resolving principal:', err);
     }
     return null;
   }
@@ -735,10 +755,13 @@ export class GeminiSearchGroundingProvider {
     const ai = this.getAIClient();
     if (!ai) return [];
 
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: `Cari data resmi sekolah Indonesia untuk query "${info.clean}".
+    const modelsToTry = [
+      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-flash-latest',
+    ];
+
+    const prompt = `Cari data resmi sekolah Indonesia untuk query "${info.clean}".
 Kembalikan JSON array sekolah jika data valid ditemukan:
 [
   {
@@ -752,40 +775,47 @@ Kembalikan JSON array sekolah jika data valid ditemukan:
     "status": "Negeri / Swasta"
   }
 ]
-PERINGATAN: JANGAN MENGARANG NPSN! Jika tidak yakin, kembalikan [].`,
-      });
+PERINGATAN: JANGAN MENGARANG NPSN! Jika tidak yakin, kembalikan [].`;
 
-      let text = response.text || '';
-      if (text.includes('```json')) {
-        text = text.slice(text.indexOf('```json') + 7);
-        if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
-      } else if (text.includes('```')) {
-        text = text.slice(text.indexOf('```') + 3);
-        if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
-      }
-      text = text.trim();
+    for (const model of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+        });
 
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .filter((item: any) => item && item.name && item.npsn && /^\d{8}$/.test(String(item.npsn)))
-          .map((item: any) => ({
-            name: item.name,
-            npsn: String(item.npsn),
-            address: item.address || '',
-            village: item.village || '',
-            district: item.district ? (item.district.startsWith('Kec.') ? item.district : `Kec. ${item.district}`) : '',
-            regency: item.regency || '',
-            province: item.province || '',
-            level: (item.level || 'SD').toUpperCase(),
-            status: item.status || 'Negeri',
-            source: 'Pencarian Web & AI Assistant',
-            sourceType: 'web_search' as SchoolSourceType,
-            sourceUrl: `https://referensi.data.kemendikdasmen.go.id/tabs.php?npsn=${item.npsn}`,
-          }));
+        let text = response.text || '';
+        if (text.includes('```json')) {
+          text = text.slice(text.indexOf('```json') + 7);
+          if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
+        } else if (text.includes('```')) {
+          text = text.slice(text.indexOf('```') + 3);
+          if (text.includes('```')) text = text.slice(0, text.indexOf('```'));
+        }
+        text = text.trim();
+
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((item: any) => item && item.name && item.npsn && /^\d{8}$/.test(String(item.npsn)))
+            .map((item: any) => ({
+              name: item.name,
+              npsn: String(item.npsn),
+              address: item.address || '',
+              village: item.village || '',
+              district: item.district ? (item.district.startsWith('Kec.') ? item.district : `Kec. ${item.district}`) : '',
+              regency: item.regency || '',
+              province: item.province || '',
+              level: (item.level || 'SD').toUpperCase(),
+              status: item.status || 'Negeri',
+              source: 'Pencarian Web & AI Assistant',
+              sourceType: 'web_search' as SchoolSourceType,
+              sourceUrl: `https://referensi.data.kemendikdasmen.go.id/tabs.php?npsn=${item.npsn}`,
+            }));
+        }
+      } catch {
+        // Continue to fallback model
       }
-    } catch {
-      // Ignored: AI rate limit or unavailable
     }
     return [];
   }
@@ -1047,8 +1077,9 @@ export class TrustedWebSearchProvider implements SchoolDataProvider {
           }
         }
 
-        // Fallback: If principalName is still empty, resolve via Principal Resolver
-        if (!cand.principalName || !cand.principalName.trim()) {
+        // Fallback: If principalName is still empty, resolve via Principal Resolver only for top match or exact query to prevent rate spikes
+        const isPriorityCandidate = cand === ranked[0] || info.isNpsn || Boolean(info.npsnCandidate);
+        if ((!cand.principalName || !cand.principalName.trim()) && isPriorityCandidate) {
           try {
             const aiRes = await this.principalResolver.resolve({
               name: cand.name,

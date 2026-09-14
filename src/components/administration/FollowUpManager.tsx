@@ -37,9 +37,9 @@ export const FollowUpManager: React.FC<FollowUpManagerProps> = ({
   profile,
   academicSetting,
   tp,
-  students,
-  remedials,
-  enrichments,
+  students = [],
+  remedials = [],
+  enrichments = [],
   onSaveRemedials,
   onSaveEnrichments,
 }) => {
@@ -61,7 +61,7 @@ export const FollowUpManager: React.FC<FollowUpManagerProps> = ({
   const [activeTab, setActiveTab] = useState<'remedial' | 'enrichment'>('remedial');
 
   // New Remedial Form
-  const [remStudentId, setRemStudentId] = useState<string>(students[0]?.id || '');
+  const [remStudentId, setRemStudentId] = useState<string>(students?.[0]?.id || '');
   const [remTpId, setRemTpId] = useState<string>(tp?.items?.[0]?.id || '');
   const [remReason, setRemReason] = useState('');
   const [remIntervention, setRemIntervention] = useState('Bimbingan perorangan dan penugasan terstruktur');

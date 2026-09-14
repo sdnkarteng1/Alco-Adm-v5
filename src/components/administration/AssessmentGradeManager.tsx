@@ -43,9 +43,9 @@ export const AssessmentGradeManager: React.FC<AssessmentGradeManagerProps> = ({
   profile,
   academicSetting,
   tp,
-  students,
-  assessments,
-  assessmentResults,
+  students = [],
+  assessments = [],
+  assessmentResults = [],
   onSaveAssessment,
   onDeleteAssessment,
   onQuickAddRemedial,
@@ -54,7 +54,7 @@ export const AssessmentGradeManager: React.FC<AssessmentGradeManagerProps> = ({
   const [assessmentList, setAssessmentList] = useState<Assessment[]>(assessments || []);
   const [resultsList, setResultsList] = useState<AssessmentResult[]>(assessmentResults || []);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(
-    assessments[0]?.id || null
+    assessments?.[0]?.id || null
   );
 
   // New assessment form state
@@ -87,7 +87,7 @@ export const AssessmentGradeManager: React.FC<AssessmentGradeManagerProps> = ({
     };
 
     // Default results for all students: 80
-    const initialResults: AssessmentResult[] = students.map((std) => ({
+    const initialResults: AssessmentResult[] = (students || []).map((std) => ({
       id: `res-${Date.now()}-${std.id}`,
       assessmentId: newId,
       studentId: std.id,

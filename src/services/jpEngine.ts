@@ -1252,6 +1252,7 @@ export function calculateEffectiveDays(
       assessmentDays: 0,
       nonLearningDays: 0,
       breakdown: { holidays, events, assessments, nonLearning },
+      monthlyBreakdown: [],
     };
   }
 
@@ -1270,6 +1271,21 @@ export function calculateEffectiveDays(
   let schoolEventDays = 0;
   let assessmentDays = 0;
   let nonLearningDays = 0;
+
+  const monthMap = new Map<string, { monthName: string; effectiveDays: number }>();
+  const monthNames = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+
+  const recordEffectiveDay = (d: Date) => {
+    effectiveLearningDays++;
+    const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const mName = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+    const cur = monthMap.get(mKey) || { monthName: mName, effectiveDays: 0 };
+    cur.effectiveDays++;
+    monthMap.set(mKey, cur);
+  };
 
   const current = new Date(start);
   while (current <= end) {
@@ -1310,15 +1326,21 @@ export function calculateEffectiveDays(
           nonLearning.push({ date: dateStr, notes: specialDay.notes });
         } else {
           // EFFECTIVE_LEARNING / effective
-          effectiveLearningDays++;
+          recordEffectiveDay(current);
         }
       } else {
-        effectiveLearningDays++;
+        recordEffectiveDay(current);
       }
     }
 
     current.setDate(current.getDate() + 1);
   }
+
+  const monthlyBreakdown = Array.from(monthMap.values()).map((m) => ({
+    monthName: m.monthName,
+    effectiveDays: m.effectiveDays,
+    effectiveWeeks: Math.max(1, Math.round(m.effectiveDays / schoolDaysPerWeek)),
+  }));
 
   return {
     totalCalendarDays,
@@ -1334,6 +1356,7 @@ export function calculateEffectiveDays(
       assessments,
       nonLearning,
     },
+    monthlyBreakdown,
   };
 }
 

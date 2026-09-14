@@ -38,9 +38,9 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
   profile,
   academicSetting,
   tp,
-  students,
-  attendanceSessions,
-  attendanceRecords,
+  students = [],
+  attendanceSessions = [],
+  attendanceRecords = [],
   onSaveStudents,
   onSaveSessions,
 }) => {
@@ -68,10 +68,10 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
   // New Session state
   const [activeTab, setActiveTab] = useState<'roster' | 'sessions' | 'recap'>('sessions');
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
-  const [sessionMeetingNo, setSessionMeetingNo] = useState(sessionList.length + 1);
+  const [sessionMeetingNo, setSessionMeetingNo] = useState((sessionList?.length || 0) + 1);
   const [sessionTopic, setSessionTopic] = useState('');
   const [selectedTpId, setSelectedTpId] = useState(tp?.items?.[0]?.id || '');
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(sessionList[0]?.id || null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(sessionList?.[0]?.id || null);
 
   const [notification, setNotification] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
