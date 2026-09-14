@@ -163,11 +163,21 @@ export function resolveCurriculumContext(
       return ruleStart <= parsedAY.endDate && parsedAY.startDate <= ruleEnd;
     });
   } else {
-    // Tanpa academicYear spesifik: cari rule aktif (bukan superseded)
-    const activeCandidates = baseCandidates.filter(
-      (rule) => rule.verificationStatus !== 'SUPERSEDED'
+    // Tanpa academicYear spesifik: cari rule aktif saat ini (TA berjalan 2025/2026 atau open-ended / terbaru)
+    const currentActive = baseCandidates.filter(
+      (rule) =>
+        rule.verificationStatus !== 'SUPERSEDED' &&
+        (!rule.effectiveUntil || rule.effectiveUntil >= '2025-07-01') &&
+        (!rule.effectiveFrom || rule.effectiveFrom <= '2025-07-01')
     );
-    matchingRules = activeCandidates.length > 0 ? activeCandidates : baseCandidates;
+    if (currentActive.length > 0) {
+      matchingRules = currentActive;
+    } else {
+      const activeCandidates = baseCandidates.filter(
+        (rule) => rule.verificationStatus !== 'SUPERSEDED'
+      );
+      matchingRules = activeCandidates.length > 0 ? activeCandidates : baseCandidates;
+    }
   }
 
   if (matchingRules.length === 0) {
