@@ -36,6 +36,8 @@ export type CurriculumPhase = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 
 export type CurriculumSubjectType = 'REQUIRED' | 'ELECTIVE' | 'LOCAL_CONTENT';
 
+export type AllocationMode = 'ANNUAL' | 'WEEKLY_EQUIVALENT';
+
 export type VerificationStatus = 'VERIFIED' | 'UNVERIFIED' | 'SUPERSEDED';
 
 export interface CurriculumSubject {
@@ -62,12 +64,21 @@ export interface CurriculumStructureRule {
   referenceWeeksPerYear: number | null;
   minutesPerJP: number | null;
 
+  /**
+   * Ekuivalensi matematis (REFERENCE_EQUIVALENT): intrakurikulerAnnualJP / referenceWeeksPerYear.
+   * Bukan klaim jadwal mingguan aktual yang mengikat sekolah.
+   */
   derivedWeeklyJP: number | null;
+  allocationMode?: AllocationMode;
+
+  selectionGroup?: string;
+  minSelections?: number;
 
   regulationIds: string[];
 
   effectiveFrom?: string;
   effectiveUntil?: string;
+  implementationFromAcademicYear?: string;
 
   verificationStatus: VerificationStatus;
 
@@ -133,6 +144,7 @@ export interface ResolvedCurriculumContext {
   minutesPerJP: number | null;
 
   derivedWeeklyJP: number | null;
+  allocationMode?: AllocationMode;
   actualAvailableAnnualJP?: number | null;
   actualEffectiveWeeks?: number | null;
   actualWeeksProvenance?: 'CALENDAR' | 'MANUAL_VALIDATED';

@@ -6,10 +6,18 @@
         var origError = console.error;
         console.error = function() {
           var msg = arguments[0];
-          if (typeof msg === 'string' && (msg.indexOf('[vite] failed to connect to websocket') !== -1 || msg.indexOf('vite-plugin-pwa:dev-ready') !== -1)) {
+          if (typeof msg === 'string' && (msg.indexOf('[vite]') !== -1 || msg.indexOf('vite-plugin-pwa:dev-ready') !== -1)) {
             return;
           }
           return origError.apply(console, arguments);
+        };
+        var origWarn = console.warn;
+        console.warn = function() {
+          var msg = arguments[0];
+          if (typeof msg === 'string' && msg.indexOf('[vite]') !== -1) {
+            return;
+          }
+          return origWarn.apply(console, arguments);
         };
       })();
     </script>

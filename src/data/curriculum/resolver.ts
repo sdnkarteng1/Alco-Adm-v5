@@ -254,6 +254,11 @@ export function resolveCurriculumContext(
     referenceWeeksPerYear: matchedRule.referenceWeeksPerYear,
     minutesPerJP: matchedRule.minutesPerJP,
     derivedWeeklyJP: matchedRule.derivedWeeklyJP,
+    allocationMode:
+      matchedRule.allocationMode ||
+      (matchedRule.derivedWeeklyJP && matchedRule.derivedWeeklyJP % 1 !== 0
+        ? 'ANNUAL'
+        : 'WEEKLY_EQUIVALENT'),
     actualAvailableAnnualJP,
     actualEffectiveWeeks,
     actualWeeksProvenance: resolvedProvenance,

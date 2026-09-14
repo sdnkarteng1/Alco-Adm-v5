@@ -166,15 +166,16 @@ export function validateStructureRule(rule: CurriculumStructureRule): Validation
     }
   }
 
-  // 7. Validasi Ekuivalensi JP Mingguan (Null-Safe)
+  // 7. Validasi Ekuivalensi JP Mingguan (Null-Safe & Presisi Matematis Tanpa Pembulatan Paksa)
   if (
     rule.intrakurikulerAnnualJP != null &&
     rule.referenceWeeksPerYear != null &&
     rule.derivedWeeklyJP != null &&
     rule.referenceWeeksPerYear > 0
   ) {
-    const expectedWeeklyJP = Math.round(rule.intrakurikulerAnnualJP / rule.referenceWeeksPerYear);
-    if (rule.derivedWeeklyJP !== expectedWeeklyJP) {
+    const expectedWeeklyJP = rule.intrakurikulerAnnualJP / rule.referenceWeeksPerYear;
+    const tolerance = 0.0001;
+    if (Math.abs(rule.derivedWeeklyJP - expectedWeeklyJP) > tolerance) {
       issues.push({
         ruleId: rule.id,
         field: 'derivedWeeklyJP',

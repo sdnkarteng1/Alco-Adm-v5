@@ -16,6 +16,8 @@ import {
   AcademicCalendar,
   CalendarDay,
   EffectiveWeekInfo,
+  CanonicalDayStatus,
+  CalendarCompletenessResult,
 } from '../types';
 import {
   calculateTeacherWorkload,
@@ -221,6 +223,142 @@ export function getSubjectJP(query: SubjectJPQuery): SubjectJPResult {
   };
 }
 
+/**
+ * Normalisasi Status Hari Kalender ke Status Kanonikal
+ * Memetakan input legacy/raw ke CanonicalDayStatus
+ */
+export function normalizeCalendarDayStatus(status?: string): CanonicalDayStatus {
+  if (!status) return 'UNKNOWN';
+  const clean = status.trim().toUpperCase();
+  if (
+    clean === 'EFFECTIVE' ||
+    clean === 'EFEKTIF' ||
+    clean === 'EFFECTIVE_LEARNING'
+  ) {
+    return 'EFFECTIVE_LEARNING';
+  }
+  if (clean === 'HOLIDAY' || clean === 'LIBUR') {
+    return 'HOLIDAY';
+  }
+  if (
+    clean === 'SCHOOLEVENT' ||
+    clean === 'SCHOOL_EVENT' ||
+    clean === 'KEGIATAN_SEKOLAH'
+  ) {
+    return 'SCHOOL_EVENT';
+  }
+  if (clean === 'ASSESSMENT' || clean === 'ASESMEN') {
+    return 'ASSESSMENT';
+  }
+  if (clean === 'BREAK' || clean === 'JEDA_SEMESTER' || clean === 'JEDA') {
+    return 'BREAK';
+  }
+  if (
+    clean === 'NONLEARNING' ||
+    clean === 'NON_LEARNING' ||
+    clean === 'NON_EFEKTIF' ||
+    clean === 'WEEKEND' ||
+    clean === 'OTHER'
+  ) {
+    return 'NON_LEARNING';
+  }
+  return 'UNKNOWN';
+}
+
+/**
+ * Validasi Kelengkapan Kalender Akademik
+ * Memeriksa apakah setiap hari sekolah terjadwal memiliki catatan status definitif
+ */
+export function validateCalendarCompleteness(
+  calendar: Partial<AcademicCalendar> & {
+    startDate?: string;
+    endDate?: string;
+    schoolDaysPerWeek?: number;
+    calendarDays?: CalendarDay[];
+  },
+  calendarDaysParam?: CalendarDay[]
+): CalendarCompletenessResult {
+  const schoolDaysPerWeek =
+    calendar.schoolDaysPerWeek === 5 || calendar.schoolDaysPerWeek === 6
+      ? calendar.schoolDaysPerWeek
+      : null;
+
+  const calendarDays =
+    calendarDaysParam && calendarDaysParam.length > 0
+      ? calendarDaysParam
+      : calendar.calendarDays || [];
+
+  const startDateStr = calendar.startDate || calendarDays[0]?.date;
+  const endDateStr = calendar.endDate || calendarDays[calendarDays.length - 1]?.date;
+
+  if (!schoolDaysPerWeek || !startDateStr || !endDateStr) {
+    return {
+      complete: false,
+      missingScheduledDates: [],
+      totalScheduledDays: 0,
+      recordedScheduledDays: 0,
+      diagnostic: 'Konfigurasi kalender (tanggal mulai/selesai atau hari sekolah) belum lengkap.',
+    };
+  }
+
+  const start = new Date(startDateStr);
+  const end = new Date(endDateStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+    return {
+      complete: false,
+      missingScheduledDates: [],
+      totalScheduledDays: 0,
+      recordedScheduledDays: 0,
+      diagnostic: 'Rentang tanggal kalender tidak valid.',
+    };
+  }
+
+  const dayMap = new Map<string, CalendarDay>();
+  for (const day of calendarDays) {
+    if (day.date) {
+      dayMap.set(day.date, day);
+    }
+  }
+
+  let totalScheduledDays = 0;
+  let recordedScheduledDays = 0;
+  const missingScheduledDates: string[] = [];
+
+  const current = new Date(start);
+  while (current <= end) {
+    const dayOfWeek = current.getDay();
+    const isScheduledSchoolDay =
+      schoolDaysPerWeek === 6
+        ? dayOfWeek >= 1 && dayOfWeek <= 6
+        : dayOfWeek >= 1 && dayOfWeek <= 5;
+
+    if (isScheduledSchoolDay) {
+      totalScheduledDays++;
+      const dateStr = current.toISOString().slice(0, 10);
+      const dayRecord = dayMap.get(dateStr);
+      if (dayRecord && normalizeCalendarDayStatus(dayRecord.status) !== 'UNKNOWN') {
+        recordedScheduledDays++;
+      } else {
+        missingScheduledDates.push(dateStr);
+      }
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  const complete = missingScheduledDates.length === 0;
+  const diagnostic = complete
+    ? 'Kalender lengkap untuk seluruh hari sekolah terjadwal.'
+    : `Terdapat ${missingScheduledDates.length} hari sekolah terjadwal tanpa status terdefinisi (UNKNOWN).`;
+
+  return {
+    complete,
+    missingScheduledDates,
+    totalScheduledDays,
+    recordedScheduledDays,
+    diagnostic,
+  };
+}
+
 export function calculateEffectiveDays(
   calendar: Partial<AcademicCalendar> & {
     startDate?: string;
@@ -239,8 +377,9 @@ export function calculateEffectiveDays(
   const events: Array<{ date: string; notes?: string }> = [];
   const assessments: Array<{ date: string; notes?: string }> = [];
   const nonLearning: Array<{ date: string; notes?: string }> = [];
+  const unknown: Array<{ date: string; notes?: string }> = [];
 
-  const emptyResult = (status: 'RESOLVED' | 'UNRESOLVED' = 'UNRESOLVED'): EffectiveDayResult => ({
+  const emptyResult = (status: 'RESOLVED' | 'UNRESOLVED' | 'PARTIAL' = 'UNRESOLVED'): EffectiveDayResult => ({
     status,
     totalCalendarDays: 0,
     scheduledSchoolDays: 0,
@@ -249,7 +388,8 @@ export function calculateEffectiveDays(
     schoolEventDays: 0,
     assessmentDays: 0,
     nonLearningDays: 0,
-    breakdown: { holidays, events, assessments, nonLearning },
+    unknownDays: 0,
+    breakdown: { holidays, events, assessments, nonLearning, unknown },
     monthlyBreakdown: [],
   });
 
@@ -277,6 +417,8 @@ export function calculateEffectiveDays(
     return emptyResult('UNRESOLVED');
   }
 
+  const completeness = validateCalendarCompleteness(calendar, calendarDaysParam);
+
   // Map agenda hari yang ditandai khusus
   const dayMap = new Map<string, CalendarDay>();
   for (const day of calendarDays) {
@@ -292,6 +434,7 @@ export function calculateEffectiveDays(
   let schoolEventDays = 0;
   let assessmentDays = 0;
   let nonLearningDays = 0;
+  let unknownDays = 0;
 
   const monthMap = new Map<string, { monthName: string; effectiveDays: number }>();
   const monthNames = [
@@ -325,32 +468,40 @@ export function calculateEffectiveDays(
       scheduledSchoolDays++;
       const dateStr = current.toISOString().slice(0, 10);
       const specialDay = dayMap.get(dateStr);
+      const canonicalStatus = specialDay
+        ? normalizeCalendarDayStatus(specialDay.status)
+        : 'UNKNOWN';
 
-      if (specialDay) {
-        const normStatus = (specialDay.status || '').toUpperCase();
-        if (normStatus === 'HOLIDAY' || specialDay.status === 'holiday') {
-          holidayDays++;
-          holidays.push({ date: dateStr, notes: specialDay.notes });
-        } else if (normStatus === 'SCHOOL_EVENT' || specialDay.status === 'schoolEvent') {
-          schoolEventDays++;
-          events.push({ date: dateStr, notes: specialDay.notes });
-        } else if (normStatus === 'ASSESSMENT') {
-          assessmentDays++;
-          assessments.push({ date: dateStr, notes: specialDay.notes });
-        } else if (
-          normStatus === 'BREAK' ||
-          normStatus === 'NON_LEARNING' ||
-          specialDay.status === 'other' ||
-          specialDay.status === 'weekend'
-        ) {
-          nonLearningDays++;
-          nonLearning.push({ date: dateStr, notes: specialDay.notes });
-        } else {
-          // EFFECTIVE_LEARNING / effective
+      switch (canonicalStatus) {
+        case 'EFFECTIVE_LEARNING':
           recordEffectiveDay(current);
-        }
-      } else {
-        recordEffectiveDay(current);
+          break;
+        case 'HOLIDAY':
+          holidayDays++;
+          holidays.push({ date: dateStr, notes: specialDay?.notes });
+          break;
+        case 'SCHOOL_EVENT':
+          schoolEventDays++;
+          events.push({ date: dateStr, notes: specialDay?.notes });
+          break;
+        case 'ASSESSMENT':
+          assessmentDays++;
+          assessments.push({ date: dateStr, notes: specialDay?.notes });
+          break;
+        case 'BREAK':
+        case 'NON_LEARNING':
+          nonLearningDays++;
+          nonLearning.push({ date: dateStr, notes: specialDay?.notes });
+          break;
+        case 'UNKNOWN':
+        default:
+          // Hari sekolah terjadwal tanpa status definitif tidak dianggap hari efektif
+          unknownDays++;
+          unknown.push({
+            date: dateStr,
+            notes: specialDay?.notes || 'Data status kalender tidak tersedia (UNKNOWN)',
+          });
+          break;
       }
     }
 
@@ -360,11 +511,13 @@ export function calculateEffectiveDays(
   const monthlyBreakdown = Array.from(monthMap.values()).map((m) => ({
     monthName: m.monthName,
     effectiveDays: m.effectiveDays,
-    effectiveWeeks: Math.max(1, Math.round(m.effectiveDays / schoolDaysPerWeek)),
+    effectiveWeeks: Math.max(0, Math.round(m.effectiveDays / schoolDaysPerWeek)),
   }));
 
+  const status: 'RESOLVED' | 'PARTIAL' = unknownDays > 0 ? 'PARTIAL' : 'RESOLVED';
+
   return {
-    status: 'RESOLVED',
+    status,
     totalCalendarDays,
     scheduledSchoolDays,
     effectiveLearningDays,
@@ -372,11 +525,14 @@ export function calculateEffectiveDays(
     schoolEventDays,
     assessmentDays,
     nonLearningDays,
+    unknownDays,
+    completeness,
     breakdown: {
       holidays,
       events,
       assessments,
       nonLearning,
+      unknown,
     },
     monthlyBreakdown,
   };
@@ -435,31 +591,20 @@ export function getEffectiveWeeksList(
   const current = new Date(start);
   while (current <= end) {
     const dayOfWeek = current.getDay(); // 0: Sun, 1: Mon...
-    const isScheduledSchoolDay = schoolDaysPerWeek === 6 ? dayOfWeek >= 1 && dayOfWeek <= 6 : dayOfWeek >= 1 && dayOfWeek <= 5;
+    const isScheduledSchoolDay =
+      schoolDaysPerWeek === 6
+        ? dayOfWeek >= 1 && dayOfWeek <= 6
+        : dayOfWeek >= 1 && dayOfWeek <= 5;
 
     if (isScheduledSchoolDay) {
       const dateStr = current.toISOString().slice(0, 10);
       const specialDay = dayMap.get(dateStr);
+      const canonicalStatus = specialDay
+        ? normalizeCalendarDayStatus(specialDay.status)
+        : 'UNKNOWN';
 
-      let isEffective = true;
-      if (specialDay) {
-        const normStatus = (specialDay.status || '').toUpperCase();
-        if (
-          normStatus === 'HOLIDAY' ||
-          specialDay.status === 'holiday' ||
-          normStatus === 'SCHOOL_EVENT' ||
-          specialDay.status === 'schoolEvent' ||
-          normStatus === 'ASSESSMENT' ||
-          normStatus === 'BREAK' ||
-          normStatus === 'NON_LEARNING' ||
-          specialDay.status === 'other' ||
-          specialDay.status === 'weekend'
-        ) {
-          isEffective = false;
-        }
-      }
-
-      if (isEffective) {
+      // HANYA hari dengan status kanonikal EFFECTIVE_LEARNING yang dihitung
+      if (canonicalStatus === 'EFFECTIVE_LEARNING') {
         // Monday of current date's calendar week
         const mon = new Date(current);
         const day = mon.getDay();

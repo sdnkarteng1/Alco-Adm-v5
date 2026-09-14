@@ -696,9 +696,9 @@ export const SD_STRUCTURE_RULES: CurriculumStructureRule[] = [
     minutesPerJP: 35,
     derivedWeeklyJP: 2,
     regulationIds: ['REG-PERMENDIKDASMEN-13-2025'],
-    effectiveFrom: '2025-01-01',
-    verificationStatus: 'VERIFIED',
-    notes: 'Koding dan Kecerdasan Artifisial sebagai mapel pilihan SD Kelas 4 sesuai Permendikdasmen No. 13 Tahun 2025 (2 JP/minggu)',
+    effectiveFrom: '2026-07-01',
+    verificationStatus: 'UNVERIFIED',
+    notes: 'Koding dan Kecerdasan Artifisial belum aktif untuk SD Kelas 4 pada implementasi awal TA 2025/2026 (status UNVERIFIED)',
   },
 
   // =========================================================================
@@ -890,9 +890,10 @@ export const SD_STRUCTURE_RULES: CurriculumStructureRule[] = [
     minutesPerJP: 35,
     derivedWeeklyJP: 2,
     regulationIds: ['REG-PERMENDIKDASMEN-13-2025'],
-    effectiveFrom: '2025-01-01',
+    effectiveFrom: '2025-07-01',
+    implementationFromAcademicYear: '2025/2026',
     verificationStatus: 'VERIFIED',
-    notes: 'Koding dan Kecerdasan Artifisial sebagai mapel pilihan SD Kelas 5 sesuai Permendikdasmen No. 13 Tahun 2025 (2 JP/minggu)',
+    notes: 'Koding dan Kecerdasan Artifisial sebagai mapel pilihan SD Kelas 5 TA 2025/2026 (2 JP/minggu)',
   },
 
   // =========================================================================
@@ -1085,9 +1086,10 @@ export const SD_STRUCTURE_RULES: CurriculumStructureRule[] = [
     minutesPerJP: 35,
     derivedWeeklyJP: 2,
     regulationIds: ['REG-PERMENDIKDASMEN-13-2025'],
-    effectiveFrom: '2025-01-01',
+    effectiveFrom: '2025-07-01',
+    implementationFromAcademicYear: '2025/2026',
     verificationStatus: 'VERIFIED',
-    notes: 'Koding dan Kecerdasan Artifisial sebagai mapel pilihan SD Kelas 6 (32 minggu: 2 JP/minggu = 64 JP/tahun)',
+    notes: 'Koding dan Kecerdasan Artifisial sebagai mapel pilihan SD Kelas 6 TA 2025/2026 (32 minggu: 2 JP/minggu = 64 JP/tahun)',
   },
 
   // =========================================================================

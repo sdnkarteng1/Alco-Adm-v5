@@ -33,6 +33,8 @@ import {
   calculateEffectiveDays,
   getEffectiveWeeksList,
   calculateAvailableJP,
+  normalizeCalendarDayStatus,
+  validateCalendarCompleteness,
 } from '../src/services/jpEngine';
 
 function assert(condition: boolean, message: string) {
@@ -125,19 +127,54 @@ async function runCurriculumMasterTests() {
   assert(coding2?.code === 'CODING_AI', 'Alias Coding & AI teresolusi ke CODING_AI');
   assert(coding3?.code === 'CODING_AI', 'Alias Kecerdasan Buatan teresolusi ke CODING_AI');
 
-  // TEST 6: Ketetapan Permendikdasmen No. 13 Tahun 2025
-  console.log('\n--- 6. Ketetapan Permendikdasmen No. 13 Tahun 2025 ---');
-  const codingGrade4 = resolveCurriculumContext({
+  // TEST 6: Ketetapan Permendikdasmen No. 13 Tahun 2025 & Float Weekly JP
+  console.log('\n--- 6. Ketetapan Permendikdasmen No. 13 Tahun 2025 & Float Weekly JP ---');
+  // Sejarah SMA Kelas 10 (54 JP intrakurikuler / 36 minggu = 1.5 JP/minggu)
+  const sejarahGrade10 = resolveCurriculumContext({
+    grade: 10,
+    subjectCode: 'SEJARAH',
+  });
+  assert(sejarahGrade10 !== null, 'Sejarah Kelas 10 SMA ditemukan');
+  assert(sejarahGrade10?.derivedWeeklyJP === 1.5, 'Sejarah Kelas 10 derivedWeeklyJP bernilai float 1.5 (tanpa pembulatan paksa)');
+  assert(sejarahGrade10?.intrakurikulerAnnualJP === 54, 'Sejarah Kelas 10 intrakurikulerAnnualJP = 54');
+  assert(sejarahGrade10?.kokurikulerAnnualJP === 18, 'Sejarah Kelas 10 kokurikulerAnnualJP = 18');
+  assert(sejarahGrade10?.allocationMode === 'ANNUAL', 'Sejarah Kelas 10 allocationMode = ANNUAL');
+
+  // Coding & AI SD Kelas 5 TA 2025/2026
+  const codingGrade5 = resolveCurriculumContext({
+    grade: 5,
+    subjectInput: 'Coding & AI',
+    academicYear: '2025/2026',
+  });
+  assert(codingGrade5 !== null, 'Coding & AI ditemukan untuk Kelas 5 SD TA 2025/2026');
+  assert(codingGrade5?.derivedWeeklyJP === 2, 'Coding & AI Kelas 5 dialokasikan 2 JP/minggu');
+  assert(codingGrade5?.intrakurikulerAnnualJP === 72, 'Coding & AI Kelas 5 dialokasikan 72 JP/tahun');
+  assert(codingGrade5?.isElective === true, 'Coding & AI berstatus mapel pilihan (ELECTIVE)');
+  assert(
+    codingGrade5?.regulationSources.some((r) => r.id === 'REG-PERMENDIKDASMEN-13-2025') === true,
+    'Coding & AI bersumber dari Permendikdasmen No. 13 Tahun 2025'
+  );
+
+  // Coding & AI SD Kelas 4 TA 2025/2026 harus tidak aktif (null / unverified) karena rollout baru mulai TA 2026/2027
+  const codingGrade4In2025 = resolveCurriculumContext({
     grade: 4,
     subjectInput: 'Coding & AI',
+    academicYear: '2025/2026',
   });
-  assert(codingGrade4 !== null, 'Coding & AI ditemukan untuk Kelas 4 SD');
-  assert(codingGrade4?.derivedWeeklyJP === 2, 'Coding & AI Kelas 4 dialokasikan 2 JP/minggu');
-  assert(codingGrade4?.intrakurikulerAnnualJP === 72, 'Coding & AI Kelas 4 dialokasikan 72 JP/tahun');
-  assert(codingGrade4?.isElective === true, 'Coding & AI berstatus mapel pilihan (ELECTIVE)');
   assert(
-    codingGrade4?.regulationSources.some((r) => r.id === 'REG-PERMENDIKDASMEN-13-2025') === true,
-    'Coding & AI bersumber dari Permendikdasmen No. 13 Tahun 2025'
+    codingGrade4In2025 === null || codingGrade4In2025?.verificationStatus === 'UNVERIFIED',
+    'Coding & AI SD Kelas 4 tidak aktif / null untuk TA 2025/2026 sesuai fase rollout'
+  );
+
+  // Coding & AI SD Kelas 4 TA 2026/2027 aktif dan teresolusi
+  const codingGrade4In2026 = resolveCurriculumContext({
+    grade: 4,
+    subjectInput: 'Coding & AI',
+    academicYear: '2026/2027',
+  });
+  assert(
+    codingGrade4In2026 !== null && codingGrade4In2026.derivedWeeklyJP === 2,
+    'Coding & AI SD Kelas 4 aktif dan teresolusi untuk TA 2026/2027'
   );
 
   // TEST 7: Pemisahan JP Normatif Tahunan vs JP Ekuivalen Mingguan vs JP Tersedia Aktual
@@ -265,6 +302,56 @@ async function runCurriculumMasterTests() {
   assert(
     effDaysValid5 !== null && effDaysValid5.effectiveLearningDays === 5,
     'calculateEffectiveDays menghitung 5 hari efektif dengan schoolDaysPerWeek = 5'
+  );
+
+  // Kalender dengan missing date (hanya Senin dan Selasa yang tercatat, Rabu-Jumat tidak ada di calendarDays)
+  const calMissingDays = {
+    semester: '1',
+    academicYear: '2024/2025',
+    startDate: '2024-07-15',
+    endDate: '2024-07-19',
+    schoolDaysPerWeek: 5,
+    calendarDays: [
+      { date: '2024-07-15', status: 'EFFECTIVE_LEARNING' }, // Senin
+      { date: '2024-07-16', status: 'EFFECTIVE_LEARNING' }, // Selasa
+      // 2024-07-17 (Rabu), 2024-07-18 (Kamis), 2024-07-19 (Jumat) TIDAK ADA di calendarDays
+    ],
+  };
+  const effDaysMissing = calculateEffectiveDays(calMissingDays as any);
+  assert(
+    effDaysMissing.effectiveLearningDays === 2,
+    'Missing date tidak dianggap hari efektif (hanya 2 hari efektif dari 2 tanggal tercatat)'
+  );
+  assert(
+    effDaysMissing.unknownDays === 3,
+    'Tanggal tanpa record di calendarDays dicatat sebagai unknownDays (3 hari)'
+  );
+  assert(
+    effDaysMissing.status === 'PARTIAL',
+    'Kalender dengan missing dates berstatus PARTIAL'
+  );
+
+  const completeness = validateCalendarCompleteness(calMissingDays as any);
+  assert(
+    completeness.complete === false && completeness.missingScheduledDates.length === 3,
+    'validateCalendarCompleteness mendeteksi 3 tanggal terjadwal yang hilang (missingScheduledDates)'
+  );
+
+  assert(
+    normalizeCalendarDayStatus('LIBUR') === 'HOLIDAY',
+    'normalizeCalendarDayStatus memetakan LIBUR ke HOLIDAY'
+  );
+  assert(
+    normalizeCalendarDayStatus('ASESMEN') === 'ASSESSMENT',
+    'normalizeCalendarDayStatus memetakan ASESMEN ke ASSESSMENT'
+  );
+  assert(
+    normalizeCalendarDayStatus('JEDA_SEMESTER') === 'BREAK',
+    'normalizeCalendarDayStatus memetakan JEDA_SEMESTER ke BREAK'
+  );
+  assert(
+    normalizeCalendarDayStatus('unknown_status') === 'UNKNOWN',
+    'normalizeCalendarDayStatus memetakan unknown status ke UNKNOWN'
   );
 
   // TEST 11: Academic Year Parser & Version-Aware Resolver

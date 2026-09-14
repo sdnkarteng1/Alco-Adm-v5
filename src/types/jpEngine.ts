@@ -153,10 +153,33 @@ export interface TeacherLoadValidationResult {
 }
 
 /**
+ * Status Kanonikal Hari Kalender Akademik
+ */
+export type CanonicalDayStatus =
+  | 'EFFECTIVE_LEARNING'
+  | 'HOLIDAY'
+  | 'SCHOOL_EVENT'
+  | 'ASSESSMENT'
+  | 'BREAK'
+  | 'NON_LEARNING'
+  | 'UNKNOWN';
+
+/**
+ * Hasil Validasi Kelengkapan Kalender Akademik
+ */
+export interface CalendarCompletenessResult {
+  complete: boolean;
+  missingScheduledDates: string[];
+  totalScheduledDays: number;
+  recordedScheduledDays: number;
+  diagnostic?: string;
+}
+
+/**
  * Hasil Perhitungan Hari Efektif Kalender
  */
 export interface EffectiveDayResult {
-  status?: 'RESOLVED' | 'UNRESOLVED';
+  status?: 'RESOLVED' | 'UNRESOLVED' | 'PARTIAL';
   totalCalendarDays: number;
   scheduledSchoolDays: number;
   effectiveLearningDays: number;
@@ -164,11 +187,14 @@ export interface EffectiveDayResult {
   schoolEventDays: number;
   assessmentDays: number;
   nonLearningDays: number;
+  unknownDays?: number;
+  completeness?: CalendarCompletenessResult;
   breakdown: {
     holidays: Array<{ date: string; notes?: string }>;
     events: Array<{ date: string; notes?: string }>;
     assessments: Array<{ date: string; notes?: string }>;
     nonLearning: Array<{ date: string; notes?: string }>;
+    unknown?: Array<{ date: string; notes?: string }>;
   };
   monthlyBreakdown?: Array<{
     monthName: string;
