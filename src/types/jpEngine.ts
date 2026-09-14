@@ -156,6 +156,7 @@ export interface TeacherLoadValidationResult {
  * Hasil Perhitungan Hari Efektif Kalender
  */
 export interface EffectiveDayResult {
+  status?: 'RESOLVED' | 'UNRESOLVED';
   totalCalendarDays: number;
   scheduledSchoolDays: number;
   effectiveLearningDays: number;

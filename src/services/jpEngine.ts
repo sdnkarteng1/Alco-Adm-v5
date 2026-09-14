@@ -222,30 +222,59 @@ export function getSubjectJP(query: SubjectJPQuery): SubjectJPResult {
 }
 
 export function calculateEffectiveDays(
-  calendar: Partial<AcademicCalendar> & { startDate: string; endDate: string; schoolDaysPerWeek?: number },
-  calendarDays: CalendarDay[] = []
+  calendar: Partial<AcademicCalendar> & {
+    startDate?: string;
+    endDate?: string;
+    schoolDaysPerWeek?: number;
+    calendarDays?: CalendarDay[];
+  },
+  calendarDaysParam?: CalendarDay[]
 ): EffectiveDayResult {
-  const schoolDaysPerWeek = Number(calendar.schoolDaysPerWeek) === 6 ? 6 : 5;
-  const start = new Date(calendar.startDate);
-  const end = new Date(calendar.endDate);
+  const schoolDaysPerWeek =
+    calendar.schoolDaysPerWeek === 5 || calendar.schoolDaysPerWeek === 6
+      ? calendar.schoolDaysPerWeek
+      : null;
 
   const holidays: Array<{ date: string; notes?: string }> = [];
   const events: Array<{ date: string; notes?: string }> = [];
   const assessments: Array<{ date: string; notes?: string }> = [];
   const nonLearning: Array<{ date: string; notes?: string }> = [];
 
+  const emptyResult = (status: 'RESOLVED' | 'UNRESOLVED' = 'UNRESOLVED'): EffectiveDayResult => ({
+    status,
+    totalCalendarDays: 0,
+    scheduledSchoolDays: 0,
+    effectiveLearningDays: 0,
+    holidayDays: 0,
+    schoolEventDays: 0,
+    assessmentDays: 0,
+    nonLearningDays: 0,
+    breakdown: { holidays, events, assessments, nonLearning },
+    monthlyBreakdown: [],
+  });
+
+  // Jangan berasumsi 5 hari sekolah jika data tidak diatur
+  if (!schoolDaysPerWeek) {
+    return emptyResult('UNRESOLVED');
+  }
+
+  const calendarDays =
+    calendarDaysParam && calendarDaysParam.length > 0
+      ? calendarDaysParam
+      : (calendar.calendarDays || []);
+
+  const startDateStr = calendar.startDate || calendarDays[0]?.date;
+  const endDateStr = calendar.endDate || calendarDays[calendarDays.length - 1]?.date;
+
+  if (!startDateStr || !endDateStr) {
+    return emptyResult('UNRESOLVED');
+  }
+
+  const start = new Date(startDateStr);
+  const end = new Date(endDateStr);
+
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
-    return {
-      totalCalendarDays: 0,
-      scheduledSchoolDays: 0,
-      effectiveLearningDays: 0,
-      holidayDays: 0,
-      schoolEventDays: 0,
-      assessmentDays: 0,
-      nonLearningDays: 0,
-      breakdown: { holidays, events, assessments, nonLearning },
-      monthlyBreakdown: [],
-    };
+    return emptyResult('UNRESOLVED');
   }
 
   // Map agenda hari yang ditandai khusus
@@ -335,6 +364,7 @@ export function calculateEffectiveDays(
   }));
 
   return {
+    status: 'RESOLVED',
     totalCalendarDays,
     scheduledSchoolDays,
     effectiveLearningDays,
@@ -357,14 +387,37 @@ export function calculateEffectiveDays(
  * untuk mendapatkan urutan Minggu Efektif Aktual beserta tanggal dan bulan resminya.
  */
 export function getEffectiveWeeksList(
-  calendar: Partial<AcademicCalendar> & { startDate: string; endDate: string; schoolDaysPerWeek?: number },
-  calendarDays: CalendarDay[] = []
+  calendar: Partial<AcademicCalendar> & {
+    startDate?: string;
+    endDate?: string;
+    schoolDaysPerWeek?: number;
+    calendarDays?: CalendarDay[];
+  },
+  calendarDaysParam?: CalendarDay[]
 ): EffectiveWeekInfo[] {
-  if (!calendar?.startDate || !calendar?.endDate) return [];
+  const schoolDaysPerWeek =
+    calendar?.schoolDaysPerWeek === 5 || calendar?.schoolDaysPerWeek === 6
+      ? calendar.schoolDaysPerWeek
+      : null;
 
-  const schoolDaysPerWeek = Number(calendar.schoolDaysPerWeek) === 6 ? 6 : 5;
-  const start = new Date(calendar.startDate);
-  const end = new Date(calendar.endDate);
+  if (!schoolDaysPerWeek) return [];
+
+  const calendarDays =
+    calendarDaysParam && calendarDaysParam.length > 0
+      ? calendarDaysParam
+      : (calendar?.calendarDays || []);
+
+  if (!calendarDays || calendarDays.length === 0) {
+    return [];
+  }
+
+  const startDateStr = calendar?.startDate || calendarDays[0]?.date;
+  const endDateStr = calendar?.endDate || calendarDays[calendarDays.length - 1]?.date;
+
+  if (!startDateStr || !endDateStr) return [];
+
+  const start = new Date(startDateStr);
+  const end = new Date(endDateStr);
 
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
 

@@ -36,64 +36,207 @@ export function getSchoolLevelForGrade(grade: number): SchoolLevel {
 
 export interface ResolveCurriculumParams {
   curriculumType?: CurriculumType;
+  academicYear?: string;
+  level?: SchoolLevel | string;
   grade: number;
-  subjectInput: string;
+  subjectCode?: string;
+  subjectInput?: string;
   schoolWeeksPerYear?: number;
+  actualWeeksProvenance?: 'CALENDAR' | 'MANUAL_VALIDATED';
+}
+
+export interface ParsedAcademicYear {
+  startYear: number;
+  endYear: number;
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * Deterministik Academic Year Parser standar kalender pendidikan nasional
+ * Contoh format: "2024/2025", "2025/2026", "2024-2025", "2025"
+ * Standar: Dimulai 1 Juli tahun n s/d 30 Juni tahun n+1
+ */
+export function parseAcademicYear(academicYear?: string): ParsedAcademicYear | null {
+  if (!academicYear || typeof academicYear !== 'string') return null;
+  const cleaned = academicYear.trim();
+
+  const matchSlash = cleaned.match(/^(\d{4})\s*[/–-]\s*(\d{4})$/);
+  if (matchSlash) {
+    const startYear = parseInt(matchSlash[1], 10);
+    const endYear = parseInt(matchSlash[2], 10);
+    return {
+      startYear,
+      endYear,
+      startDate: `${startYear}-07-01`,
+      endDate: `${endYear}-06-30`,
+    };
+  }
+
+  const matchSingle = cleaned.match(/^(\d{4})$/);
+  if (matchSingle) {
+    const startYear = parseInt(matchSingle[1], 10);
+    const endYear = startYear + 1;
+    return {
+      startYear,
+      endYear,
+      startDate: `${startYear}-07-01`,
+      endDate: `${endYear}-06-30`,
+    };
+  }
+
+  return null;
+}
+
+export function resolveAcademicYearStartDate(academicYear?: string): string | null {
+  const parsed = parseAcademicYear(academicYear);
+  return parsed ? parsed.startDate : null;
+}
+
+export function resolveAcademicStartYear(academicYear?: string): number | null {
+  const parsed = parseAcademicYear(academicYear);
+  return parsed ? parsed.startYear : null;
 }
 
 /**
  * RESOLVER UTAMA KURIKULUM NASIONAL
  *
  * Menggabungkan Master Mata Pelajaran, Master Struktur JP, Pemetaan Fase,
- * dan Master Regulasi Resmi menjadi satu konteks utuh yang siap dikonsumsi oleh:
- * - jpEngine
- * - PROTA / PROMES
- * - Kalender Akademik
- * - Perencanaan Pembelajaran
+ * dan Master Regulasi Resmi menjadi satu konteks utuh yang sensitif tahun ajaran (version-aware)
+ * dan memisahkan tegas JP Normatif Regulasi dengan JP Tersedia Aktual Sekolah.
  */
 export function resolveCurriculumContext(
   params: ResolveCurriculumParams
 ): ResolvedCurriculumContext | null {
   const {
     curriculumType = 'KURIKULUM_MERDEKA',
+    academicYear,
+    level: inputLevel,
     grade,
+    subjectCode,
     subjectInput,
     schoolWeeksPerYear,
+    actualWeeksProvenance,
   } = params;
 
-  if (!grade || !subjectInput) return null;
+  if (!grade) return null;
+  const rawSubject = subjectCode || subjectInput;
+  if (!rawSubject) return null;
 
   // 1. Resolve Subject
   const subject =
-    findSubjectByCode(subjectInput) || findSubjectByNameOrAlias(subjectInput);
+    (subjectCode ? findSubjectByCode(subjectCode) : null) ||
+    findSubjectByCode(rawSubject) ||
+    findSubjectByNameOrAlias(rawSubject);
 
   if (!subject) {
     return null;
   }
 
-  // 2. Find Structure Rule
+  // 2. Filter Candidate Rules
   const level = getSchoolLevelForGrade(grade);
-  const matchedRule = ALL_CURRICULUM_STRUCTURE_RULES.find(
+  const targetLevel = inputLevel ? String(inputLevel).toUpperCase() : level;
+
+  const baseCandidates = ALL_CURRICULUM_STRUCTURE_RULES.filter(
     (rule) =>
       rule.grade === grade &&
       rule.subjectCode === subject.code &&
-      (rule.curriculumType === curriculumType || !rule.curriculumType)
+      (rule.curriculumType === curriculumType || !rule.curriculumType) &&
+      (!targetLevel || rule.level === targetLevel)
   );
 
-  if (!matchedRule) {
+  if (baseCandidates.length === 0) {
     return null;
   }
 
-  // 3. Resolve Regulation Sources
+  // 3. Period & Academic Year Filtering
+  const parsedAY = parseAcademicYear(academicYear);
+  let matchingRules = baseCandidates;
+
+  if (parsedAY) {
+    matchingRules = baseCandidates.filter((rule) => {
+      const ruleStart = rule.effectiveFrom || '1970-01-01';
+      const ruleEnd = rule.effectiveUntil || '9999-12-31';
+      return ruleStart <= parsedAY.endDate && parsedAY.startDate <= ruleEnd;
+    });
+  } else {
+    // Tanpa academicYear spesifik: cari rule aktif (bukan superseded)
+    const activeCandidates = baseCandidates.filter(
+      (rule) => rule.verificationStatus !== 'SUPERSEDED'
+    );
+    matchingRules = activeCandidates.length > 0 ? activeCandidates : baseCandidates;
+  }
+
+  if (matchingRules.length === 0) {
+    return null;
+  }
+
+  // 4. Pisahkan Active vs Superseded
+  const activeCandidates = matchingRules.filter(
+    (r) => r.verificationStatus !== 'SUPERSEDED'
+  );
+  const supersededCandidates = matchingRules.filter(
+    (r) => r.verificationStatus === 'SUPERSEDED'
+  );
+
+  let matchedRule: (typeof ALL_CURRICULUM_STRUCTURE_RULES)[0];
+
+  if (activeCandidates.length > 1) {
+    // Ambiguity handling: JANGAN pilih .find() pertama jika tumpang tindih
+    const phase = getPhaseForGrade(grade) || 'A';
+    return {
+      level,
+      grade,
+      phase,
+      subject,
+      structureRule: null,
+      rule: activeCandidates[0],
+      regulationSources: [],
+      verificationStatus: 'UNVERIFIED',
+      intrakurikulerAnnualJP: null,
+      kokurikulerAnnualJP: null,
+      totalAnnualJP: null,
+      referenceWeeksPerYear: null,
+      minutesPerJP: null,
+      derivedWeeklyJP: null,
+      actualAvailableAnnualJP: null,
+      actualEffectiveWeeks: null,
+      isOfficial: false,
+      isAmbiguous: true,
+      ambiguityReason: `Ditemukan ${activeCandidates.length} aturan aktif yang tumpang tindih untuk ${subject.name} Kelas ${grade} pada tahun ajaran ${academicYear || 'berjalan'}.`,
+      explanation: `Ambiguitas aturan kurikulum: lebih dari satu aturan aktif terdefinisi.`,
+    };
+  } else if (activeCandidates.length === 1) {
+    matchedRule = activeCandidates[0];
+  } else if (supersededCandidates.length === 1 && parsedAY) {
+    // Historical lookup: diperbolehkan jika tahun ajaran berada pada masa berlakunya
+    matchedRule = supersededCandidates[0];
+  } else {
+    return null;
+  }
+
+  // 5. Resolve Regulation Sources
   const regulationSources = getRegulationSources(matchedRule.regulationIds);
 
-  // 4. Hitung perbedaan antara JP Normatif vs JP Aktual Sekolah
-  // Rumus JP Tersedia Aktual: (Minggu Efektif Sekolah) * (JP Ekuivalen Mingguan)
-  const effectiveWeeks = schoolWeeksPerYear && schoolWeeksPerYear > 0
-    ? schoolWeeksPerYear
-    : matchedRule.referenceWeeksPerYear;
+  // 6. Pemisahan Tegas JP Normatif Regulasi vs JP Tersedia Aktual Sekolah
+  // actualAvailableAnnualJP HANYA dihitung bila schoolWeeksPerYear tersedia secara valid
+  // JANGAN default ke referenceWeeksPerYear!
+  const hasValidActualWeeks =
+    schoolWeeksPerYear != null &&
+    typeof schoolWeeksPerYear === 'number' &&
+    schoolWeeksPerYear > 0;
 
-  const actualAvailableAnnualJP = effectiveWeeks * matchedRule.derivedWeeklyJP;
+  const actualAvailableAnnualJP =
+    hasValidActualWeeks && matchedRule.derivedWeeklyJP != null
+      ? schoolWeeksPerYear * matchedRule.derivedWeeklyJP
+      : null;
+
+  const actualEffectiveWeeks = hasValidActualWeeks ? schoolWeeksPerYear : null;
+  const resolvedProvenance =
+    actualAvailableAnnualJP !== null
+      ? (actualWeeksProvenance || 'MANUAL_VALIDATED')
+      : undefined;
+
   const phase = matchedRule.phase || getPhaseForGrade(grade) || 'A';
 
   return {
@@ -112,9 +255,14 @@ export function resolveCurriculumContext(
     minutesPerJP: matchedRule.minutesPerJP,
     derivedWeeklyJP: matchedRule.derivedWeeklyJP,
     actualAvailableAnnualJP,
-    isElective: matchedRule.subjectType === 'ELECTIVE' || matchedRule.subjectType === 'LOCAL_CONTENT',
+    actualEffectiveWeeks,
+    actualWeeksProvenance: resolvedProvenance,
+    isElective:
+      matchedRule.subjectType === 'ELECTIVE' ||
+      matchedRule.subjectType === 'LOCAL_CONTENT',
     effectivePhase: phase,
     isOfficial: matchedRule.verificationStatus === 'VERIFIED',
+    isAmbiguous: false,
     explanation: `Alokasi resmi: ${matchedRule.derivedWeeklyJP} JP/minggu (${matchedRule.intrakurikulerAnnualJP} JP intrakurikuler/tahun) berdasarkan ${regulationSources[0]?.title || 'Regulasi Resmi'}.`,
   };
 }

@@ -37,6 +37,30 @@ export const OFFICIAL_REGULATION_SOURCES: RegulationSource[] = [
       'Mengatur pembaruan implementasi Kurikulum Merdeka dan penambahan Mata Pelajaran Pilihan Koding dan Kecerdasan Artifisial (Coding dan AI) untuk jenjang SD (kelas 4-6), SMP, dan SMA.',
   },
   {
+    id: 'DEC-BSKAP-046-2025',
+    title:
+      'Keputusan Kepala BSKAP No. 046/H/KR/2025 tentang Capaian Pembelajaran pada Pendidikan Anak Usia Dini, Jenjang Pendidikan Dasar, dan Jenjang Pendidikan Menengah pada Kurikulum Merdeka',
+    number: '046/H/KR/2025',
+    year: 2025,
+    type: 'OFFICIAL_DECISION',
+    authority: 'Badan Standar, Kurikulum, dan Asesmen Pendidikan (BSKAP) Kemendikdasmen RI',
+    effectiveFrom: '2025-01-01',
+    sourceUrl: 'https://jdih.kemdikdasmen.go.id/',
+    notes:
+      'Pembaruan Capaian Pembelajaran (CP) 2025 memuat muatan koding dan kecerdasan artifisial serta penyesuaian elemen kompetensi pada jenjang PAUD, Dikdas, dan Dikmen.',
+  },
+  {
+    id: 'GUIDE-BSKAP-PPA-2025',
+    title: 'Panduan Pembelajaran dan Asesmen Kurikulum Merdeka (Edisi Revisi 2025)',
+    year: 2025,
+    type: 'OFFICIAL_GUIDE',
+    authority: 'BSKAP Kemendikdasmen RI',
+    effectiveFrom: '2025-01-01',
+    sourceUrl: 'https://kurikulum.kemdikbud.go.id/',
+    notes:
+      'Panduan resmi perencanaan pembelajaran, alokasi JP efektif, asesmen autentik, dan kriteria ketercapaian tujuan pembelajaran (KKTP) edisi revisi 2025.',
+  },
+  {
     id: 'DEC-BSKAP-032-2024',
     title:
       'Keputusan Kepala BSKAP No. 032/H/KR/2024 tentang Capaian Pembelajaran pada Pendidikan Anak Usia Dini, Jenjang Pendidikan Dasar, dan Jenjang Pendidikan Menengah pada Kurikulum Merdeka',
@@ -45,9 +69,10 @@ export const OFFICIAL_REGULATION_SOURCES: RegulationSource[] = [
     type: 'OFFICIAL_DECISION',
     authority: 'Badan Standar, Kurikulum, dan Asesmen Pendidikan (BSKAP) Kemendikbudristek',
     effectiveFrom: '2024-06-11',
+    effectiveUntil: '2024-12-31',
     sourceUrl: 'https://kurikulum.kemdikbud.go.id/',
     notes:
-      'Menetapkan rumusan Capaian Pembelajaran (CP) mutakhir untuk semua mata pelajaran Fase Fondasi, Fase A, B, C, D, E, dan F.',
+      'Regulasi historis penetapan rumusan Capaian Pembelajaran (CP) 2024 untuk Fase Fondasi sampai Fase F. Dimutakhirkan oleh Keputusan Kepala BSKAP No. 046/H/KR/2025.',
   },
   {
     id: 'DEC-BSKAP-031-2024',
@@ -68,9 +93,10 @@ export const OFFICIAL_REGULATION_SOURCES: RegulationSource[] = [
     type: 'OFFICIAL_GUIDE',
     authority: 'BSKAP Kemendikbudristek RI',
     effectiveFrom: '2024-06-01',
+    effectiveUntil: '2024-12-31',
     sourceUrl: 'https://kurikulum.kemdikbud.go.id/',
     notes:
-      'Petunjuk teknis perencanaan pembelajaran, penyusunan TP/ATP, alokasi waktu, kriteria ketercapaian tujuan pembelajaran (KKTP), dan asesmen formatif/sumatif.',
+      'Petunjuk teknis perencanaan pembelajaran, penyusunan TP/ATP, alokasi waktu, kriteria ketercapaian tujuan pembelajaran (KKTP), dan asesmen formatif/sumatif 2024.',
   },
   {
     id: 'REG-PERMENDIKBUD-37-2018',

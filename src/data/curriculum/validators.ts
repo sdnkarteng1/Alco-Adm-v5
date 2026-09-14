@@ -1,10 +1,14 @@
 import { CurriculumStructureRule, ValidationIssue } from './types';
 import { ALL_CURRICULUM_STRUCTURE_RULES } from './structure';
+import { findSubjectByCode } from './subjects';
+import { OFFICIAL_REGULATION_SOURCES } from './regulations';
 
 export interface ValidationResult {
   isValid: boolean;
   issues: ValidationIssue[];
 }
+
+const REGULATION_ID_SET = new Set(OFFICIAL_REGULATION_SOURCES.map((r) => r.id));
 
 /**
  * Memvalidasi konsistensi internal dari sebuah CurriculumStructureRule
@@ -12,38 +16,175 @@ export interface ValidationResult {
 export function validateStructureRule(rule: CurriculumStructureRule): ValidationResult {
   const issues: ValidationIssue[] = [];
 
-  // 1. Validasi Total JP
-  if (rule.intrakurikulerAnnualJP + rule.kokurikulerAnnualJP !== rule.totalAnnualJP) {
+  // 1. Validasi Grade & Level
+  if (typeof rule.grade !== 'number' || rule.grade < 1 || rule.grade > 12) {
     issues.push({
       ruleId: rule.id,
-      field: 'totalAnnualJP',
-      message: `Total annual JP mismatch: intra (${rule.intrakurikulerAnnualJP}) + kokuri (${rule.kokurikulerAnnualJP}) !== total (${rule.totalAnnualJP})`,
+      field: 'grade',
+      message: `Grade tidak valid: ${rule.grade}. Harus berada dalam rentang 1–12.`,
       severity: 'ERROR',
     });
+  } else {
+    // Level ↔ Grade mismatch validation
+    if (rule.level === 'SD' && (rule.grade < 1 || rule.grade > 6)) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'level',
+        message: `Level SD tidak valid untuk Kelas ${rule.grade} (SD hanya Kelas 1–6).`,
+        severity: 'ERROR',
+      });
+    } else if (rule.level === 'SMP' && (rule.grade < 7 || rule.grade > 9)) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'level',
+        message: `Level SMP tidak valid untuk Kelas ${rule.grade} (SMP hanya Kelas 7–9).`,
+        severity: 'ERROR',
+      });
+    } else if (rule.level === 'SMA' && (rule.grade < 10 || rule.grade > 12)) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'level',
+        message: `Level SMA tidak valid untuk Kelas ${rule.grade} (SMA hanya Kelas 10–12).`,
+        severity: 'ERROR',
+      });
+    }
   }
 
-  // 2. Validasi Ekuivalensi JP Mingguan
-  const expectedWeeklyJP = Math.round(rule.intrakurikulerAnnualJP / rule.referenceWeeksPerYear);
-  if (rule.derivedWeeklyJP !== expectedWeeklyJP) {
+  // 2. Validasi Subjek (Harus terdaftar di Master Subjects)
+  if (!rule.subjectCode) {
     issues.push({
       ruleId: rule.id,
-      field: 'derivedWeeklyJP',
-      message: `Weekly JP mismatch: derived (${rule.derivedWeeklyJP}) vs calculated intra/weeks (${expectedWeeklyJP})`,
+      field: 'subjectCode',
+      message: `Aturan tidak memiliki subjectCode.`,
       severity: 'ERROR',
     });
+  } else {
+    const subject = findSubjectByCode(rule.subjectCode);
+    if (!subject) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'subjectCode',
+        message: `Kode mata pelajaran '${rule.subjectCode}' tidak ditemukan di Master Subjects.`,
+        severity: 'ERROR',
+      });
+    }
   }
 
-  // 3. Validasi Regulasi Rujukan
+  // 3. Validasi Regulasi Rujukan & Sumber
   if (!rule.regulationIds || rule.regulationIds.length === 0) {
     issues.push({
       ruleId: rule.id,
       field: 'regulationIds',
-      message: `Aturan tidak memiliki sumber rujukan regulasi resmi (regulationIds kosong)`,
+      message: `Aturan tidak memiliki sumber rujukan regulasi resmi (regulationIds kosong).`,
+      severity: 'ERROR',
+    });
+  } else {
+    for (const regId of rule.regulationIds) {
+      if (!REGULATION_ID_SET.has(regId)) {
+        issues.push({
+          ruleId: rule.id,
+          field: 'regulationIds',
+          message: `Regulation ID '${regId}' tidak ditemukan di Regulation Registry resmi.`,
+          severity: 'ERROR',
+        });
+      }
+    }
+  }
+
+  // 4. VERIFIED HARUS BENAR-BENAR PUNYA SUMBER RESMI TERDAFTAR
+  if (rule.verificationStatus === 'VERIFIED') {
+    const hasValidRegisteredSource =
+      rule.regulationIds &&
+      rule.regulationIds.length > 0 &&
+      rule.regulationIds.every((id) => REGULATION_ID_SET.has(id));
+
+    if (!hasValidRegisteredSource) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'verificationStatus',
+        message: `Aturan berstatus VERIFIED tetapi mereferensikan sumber yang tidak terdaftar di Regulation Registry resmi.`,
+        severity: 'ERROR',
+      });
+    }
+  }
+
+  // 5. Validasi Non-Negatif untuk Seluruh JP (Null-Safe)
+  if (rule.intrakurikulerAnnualJP != null && rule.intrakurikulerAnnualJP < 0) {
+    issues.push({
+      ruleId: rule.id,
+      field: 'intrakurikulerAnnualJP',
+      message: `intrakurikulerAnnualJP bernilai negatif (${rule.intrakurikulerAnnualJP}).`,
+      severity: 'ERROR',
+    });
+  }
+  if (rule.kokurikulerAnnualJP != null && rule.kokurikulerAnnualJP < 0) {
+    issues.push({
+      ruleId: rule.id,
+      field: 'kokurikulerAnnualJP',
+      message: `kokurikulerAnnualJP bernilai negatif (${rule.kokurikulerAnnualJP}).`,
+      severity: 'ERROR',
+    });
+  }
+  if (rule.totalAnnualJP != null && rule.totalAnnualJP < 0) {
+    issues.push({
+      ruleId: rule.id,
+      field: 'totalAnnualJP',
+      message: `totalAnnualJP bernilai negatif (${rule.totalAnnualJP}).`,
+      severity: 'ERROR',
+    });
+  }
+  if (rule.derivedWeeklyJP != null && rule.derivedWeeklyJP < 0) {
+    issues.push({
+      ruleId: rule.id,
+      field: 'derivedWeeklyJP',
+      message: `derivedWeeklyJP bernilai negatif (${rule.derivedWeeklyJP}).`,
+      severity: 'ERROR',
+    });
+  }
+  if (rule.referenceWeeksPerYear != null && rule.referenceWeeksPerYear <= 0) {
+    issues.push({
+      ruleId: rule.id,
+      field: 'referenceWeeksPerYear',
+      message: `referenceWeeksPerYear harus > 0, ditemukan (${rule.referenceWeeksPerYear}).`,
       severity: 'ERROR',
     });
   }
 
-  // 4. Validasi Pemetaan Kelas ke Fase (Kurikulum Merdeka)
+  // 6. Validasi Total JP (Null-Safe)
+  if (
+    rule.intrakurikulerAnnualJP != null &&
+    rule.kokurikulerAnnualJP != null &&
+    rule.totalAnnualJP != null
+  ) {
+    if (rule.intrakurikulerAnnualJP + rule.kokurikulerAnnualJP !== rule.totalAnnualJP) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'totalAnnualJP',
+        message: `Total annual JP mismatch: intra (${rule.intrakurikulerAnnualJP}) + kokuri (${rule.kokurikulerAnnualJP}) !== total (${rule.totalAnnualJP})`,
+        severity: 'ERROR',
+      });
+    }
+  }
+
+  // 7. Validasi Ekuivalensi JP Mingguan (Null-Safe)
+  if (
+    rule.intrakurikulerAnnualJP != null &&
+    rule.referenceWeeksPerYear != null &&
+    rule.derivedWeeklyJP != null &&
+    rule.referenceWeeksPerYear > 0
+  ) {
+    const expectedWeeklyJP = Math.round(rule.intrakurikulerAnnualJP / rule.referenceWeeksPerYear);
+    if (rule.derivedWeeklyJP !== expectedWeeklyJP) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'derivedWeeklyJP',
+        message: `Weekly JP mismatch: derived (${rule.derivedWeeklyJP}) vs calculated intra/weeks (${expectedWeeklyJP})`,
+        severity: 'ERROR',
+      });
+    }
+  }
+
+  // 8. Validasi Pemetaan Kelas ke Fase (Kurikulum Merdeka)
   if (rule.curriculumType === 'KURIKULUM_MERDEKA' && rule.phase) {
     if ((rule.grade === 1 || rule.grade === 2) && rule.phase !== 'A') {
       issues.push({
@@ -90,7 +231,19 @@ export function validateStructureRule(rule: CurriculumStructureRule): Validation
     }
   }
 
-  // 5. Cek Status Verifikasi
+  // 9. Validasi Periode Berlaku
+  if (rule.effectiveFrom && rule.effectiveUntil) {
+    if (rule.effectiveFrom > rule.effectiveUntil) {
+      issues.push({
+        ruleId: rule.id,
+        field: 'effectivePeriod',
+        message: `Periode berlaku tidak valid: effectiveFrom (${rule.effectiveFrom}) > effectiveUntil (${rule.effectiveUntil})`,
+        severity: 'ERROR',
+      });
+    }
+  }
+
+  // 10. Cek Status Verifikasi
   if (rule.verificationStatus === 'UNVERIFIED') {
     issues.push({
       ruleId: rule.id,
@@ -114,10 +267,63 @@ export function validateAllStructureRules(
 ) {
   const allIssues: ValidationIssue[] = [];
 
+  // Track ID duplikat
+  const seenRuleIds = new Set<string>();
+
   for (const rule of rules) {
+    if (seenRuleIds.has(rule.id)) {
+      allIssues.push({
+        ruleId: rule.id,
+        field: 'id',
+        message: `Duplicate rule ID terdeteksi: '${rule.id}'. Setiap aturan harus memiliki ID unik.`,
+        severity: 'ERROR',
+      });
+    } else {
+      seenRuleIds.add(rule.id);
+    }
+
     const res = validateStructureRule(rule);
     if (res.issues.length > 0) {
       allIssues.push(...res.issues);
+    }
+  }
+
+  // Validasi Cross-Rule: Aturan aktif duplikat & Tumpang Tindih Periode Berlaku (Overlapping Periods)
+  const activeRules = rules.filter((r) => r.verificationStatus !== 'SUPERSEDED');
+  const groupedRules = new Map<string, CurriculumStructureRule[]>();
+
+  for (const rule of activeRules) {
+    const key = `${rule.curriculumType}_${rule.level}_${rule.grade}_${rule.subjectCode}`;
+    const group = groupedRules.get(key) || [];
+    group.push(rule);
+    groupedRules.set(key, group);
+  }
+
+  for (const [key, group] of groupedRules.entries()) {
+    if (group.length > 1) {
+      // Periksa apakah terdapat tumpang tindih periode (overlap)
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const ruleA = group[i];
+          const ruleB = group[j];
+
+          const startA = ruleA.effectiveFrom || '1970-01-01';
+          const endA = ruleA.effectiveUntil || '9999-12-31';
+          const startB = ruleB.effectiveFrom || '1970-01-01';
+          const endB = ruleB.effectiveUntil || '9999-12-31';
+
+          // Dua interval [startA, endA] dan [startB, endB] tumpang tindih jika:
+          const overlaps = startA <= endB && startB <= endA;
+          if (overlaps) {
+            allIssues.push({
+              ruleId: ruleA.id,
+              field: 'effectivePeriod',
+              message: `Overlapping active rules terdeteksi untuk kunci ${key}: rule '${ruleA.id}' dan '${ruleB.id}' memiliki periode berlaku aktif yang saling tumpang tindih.`,
+              severity: 'ERROR',
+            });
+          }
+        }
+      }
     }
   }
 

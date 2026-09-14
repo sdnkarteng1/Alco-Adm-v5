@@ -134,11 +134,15 @@ export interface ResolvedCurriculumContext {
 
   derivedWeeklyJP: number | null;
   actualAvailableAnnualJP?: number | null;
+  actualEffectiveWeeks?: number | null;
+  actualWeeksProvenance?: 'CALENDAR' | 'MANUAL_VALIDATED';
   isElective?: boolean;
   effectivePhase?: CurriculumPhase;
 
   isOfficial: boolean;
   explanation: string;
+  isAmbiguous?: boolean;
+  ambiguityReason?: string;
 }
 
 export interface ValidationIssue {

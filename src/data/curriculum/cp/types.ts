@@ -13,6 +13,8 @@ export interface MasterCPEntry {
   generalDescription: string;
   elements: CPElement[];
   regulationSourceId: string;
+  effectiveFrom?: string;
+  effectiveUntil?: string;
   verificationStatus: VerificationStatus;
   notes?: string;
 }

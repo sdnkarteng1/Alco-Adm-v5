@@ -15,8 +15,10 @@
 import {
   ALL_CURRICULUM_STRUCTURE_RULES,
   resolveCurriculumContext,
+  parseAcademicYear,
   getPhaseForGrade,
   getSchoolLevelForGrade,
+  validateStructureRule,
   validateAllStructureRules,
   findSubjectByCode,
   findSubjectByNameOrAlias,
@@ -26,7 +28,12 @@ import {
   SMP_CP_ENTRIES,
   SMA_CP_ENTRIES,
 } from '../src/data/curriculum';
-import { getSubjectJP } from '../src/services/jpEngine';
+import {
+  getSubjectJP,
+  calculateEffectiveDays,
+  getEffectiveWeeksList,
+  calculateAvailableJP,
+} from '../src/services/jpEngine';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -205,6 +212,220 @@ async function runCurriculumMasterTests() {
 
   const cpInformatikaD = findCPBySubjectAndPhase('Informatika', 'D');
   assert(cpInformatikaD !== undefined, 'CP Informatika Fase D ditemukan');
+
+  // TEST 10: Calendar No-Assumption Regression
+  console.log('\n--- 10. Calendar No-Assumption Regression ---');
+  // Kalender dengan schoolDaysPerWeek tidak didefinisikan (undefined) atau null
+  const calNoDays = {
+    semester: '1',
+    academicYear: '2024/2025',
+    calendarDays: [
+      { date: '2024-07-15', status: 'EFEKTIF' },
+      { date: '2024-07-16', status: 'EFEKTIF' },
+    ],
+  };
+  const effDaysNoDays = calculateEffectiveDays(calNoDays as any);
+  assert(
+    effDaysNoDays === null || effDaysNoDays.status === 'UNRESOLVED',
+    'calculateEffectiveDays mengembalikan UNRESOLVED/null jika schoolDaysPerWeek tidak diset'
+  );
+
+  const effWeeksNoDays = getEffectiveWeeksList(calNoDays as any);
+  assert(
+    effWeeksNoDays.length === 0,
+    'getEffectiveWeeksList mengembalikan array kosong jika schoolDaysPerWeek tidak diset'
+  );
+
+  const calEmptyDays = {
+    semester: '1',
+    academicYear: '2024/2025',
+    schoolDaysPerWeek: 5,
+    calendarDays: [],
+  };
+  const effWeeksEmptyDays = getEffectiveWeeksList(calEmptyDays as any);
+  assert(
+    effWeeksEmptyDays.length === 0,
+    'getEffectiveWeeksList mengembalikan array kosong jika calendarDays kosong'
+  );
+
+  // Kalender valid dengan 5 hari sekolah
+  const calValid5 = {
+    semester: '1',
+    academicYear: '2024/2025',
+    schoolDaysPerWeek: 5,
+    calendarDays: [
+      { date: '2024-07-15', status: 'EFEKTIF' }, // Senin
+      { date: '2024-07-16', status: 'EFEKTIF' }, // Selasa
+      { date: '2024-07-17', status: 'EFEKTIF' }, // Rabu
+      { date: '2024-07-18', status: 'EFEKTIF' }, // Kamis
+      { date: '2024-07-19', status: 'EFEKTIF' }, // Jumat
+    ],
+  };
+  const effDaysValid5 = calculateEffectiveDays(calValid5 as any);
+  assert(
+    effDaysValid5 !== null && effDaysValid5.effectiveLearningDays === 5,
+    'calculateEffectiveDays menghitung 5 hari efektif dengan schoolDaysPerWeek = 5'
+  );
+
+  // TEST 11: Academic Year Parser & Version-Aware Resolver
+  console.log('\n--- 11. Academic Year Parser & Version-Aware Resolver ---');
+  const ayParsed1 = parseAcademicYear('2024/2025');
+  assert(
+    ayParsed1 !== null &&
+      ayParsed1.startYear === 2024 &&
+      ayParsed1.endYear === 2025 &&
+      ayParsed1.startDate === '2024-07-01' &&
+      ayParsed1.endDate === '2025-06-30',
+    'parseAcademicYear membaca format 2024/2025 dengan tepat'
+  );
+
+  const ayParsed2 = parseAcademicYear('2025-2026');
+  assert(
+    ayParsed2 !== null &&
+      ayParsed2.startYear === 2025 &&
+      ayParsed2.endYear === 2026,
+    'parseAcademicYear membaca format 2025-2026 dengan tepat'
+  );
+
+  const ayInvalid = parseAcademicYear('invalid-year');
+  assert(ayInvalid === null, 'parseAcademicYear mengembalikan null untuk format tidak valid');
+
+  const resolvedWithAY = resolveCurriculumContext({
+    grade: 7,
+    subjectCode: 'BINDO',
+    academicYear: '2024/2025',
+  });
+  assert(
+    resolvedWithAY !== null && resolvedWithAY.subject?.code === 'BINDO',
+    'resolveCurriculumContext berhasil menyelesaikan konteks dengan academicYear 2024/2025'
+  );
+
+  // TEST 12: Actual Available JP Semantics (Strict Separation)
+  console.log('\n--- 12. Actual Available JP Semantics ---');
+  const resolvedNoWeeks = resolveCurriculumContext({
+    grade: 7,
+    subjectCode: 'BINDO',
+    // schoolWeeksPerYear TIDAK disediakan
+  });
+  assert(
+    resolvedNoWeeks !== null && resolvedNoWeeks.actualAvailableAnnualJP === null,
+    'Jika schoolWeeksPerYear tidak disediakan, actualAvailableAnnualJP bernilai null (bukan berasumsi referenceWeeks)'
+  );
+  assert(
+    resolvedNoWeeks !== null && resolvedNoWeeks.referenceWeeksPerYear === 36,
+    'referenceWeeksPerYear tetap tersedia sebagai standar regulasi (36 minggu)'
+  );
+
+  const resolvedWithWeeks = resolveCurriculumContext({
+    grade: 7,
+    subjectCode: 'BINDO',
+    schoolWeeksPerYear: 35,
+    actualWeeksProvenance: 'CALENDAR',
+  });
+  assert(
+    resolvedWithWeeks !== null && resolvedWithWeeks.actualAvailableAnnualJP === 35 * 5,
+    'Jika schoolWeeksPerYear disediakan (35), actualAvailableAnnualJP dihitung akurat (35 × 5 = 175)'
+  );
+  assert(
+    resolvedWithWeeks !== null && resolvedWithWeeks.actualWeeksProvenance === 'CALENDAR',
+    'Provenance data aktual dicatat sebagai CALENDAR'
+  );
+
+  // TEST 13: Master Validator Edge-Case Coverage
+  console.log('\n--- 13. Master Validator Edge Cases ---');
+  const invalidGradeRule: any = {
+    id: 'test-invalid-grade',
+    curriculumType: 'KURIKULUM_MERDEKA',
+    level: 'SD',
+    grade: 15, // Invalid grade
+    phase: 'A',
+    subjectCode: 'BINDO',
+    intrakurikulerAnnualJP: 216,
+    kokurikulerAnnualJP: 72,
+    totalAnnualJP: 288,
+    referenceWeeksPerYear: 36,
+    derivedWeeklyJP: 6,
+    regulationIds: ['REG-PERMENDIKBUDRISTEK-12-2024'],
+    verificationStatus: 'VERIFIED',
+  };
+  const invalidGradeResult = validateStructureRule(invalidGradeRule);
+  assert(
+    invalidGradeResult.isValid === false &&
+      invalidGradeResult.issues.some((i) => i.field === 'grade'),
+    'Validator mendeteksi grade tidak valid (> 12)'
+  );
+
+  const levelMismatchRule: any = {
+    id: 'test-level-mismatch',
+    curriculumType: 'KURIKULUM_MERDEKA',
+    level: 'SD',
+    grade: 8, // SD cannot have grade 8
+    phase: 'D',
+    subjectCode: 'BINDO',
+    intrakurikulerAnnualJP: 216,
+    kokurikulerAnnualJP: 72,
+    totalAnnualJP: 288,
+    referenceWeeksPerYear: 36,
+    derivedWeeklyJP: 6,
+    regulationIds: ['REG-PERMENDIKBUDRISTEK-12-2024'],
+    verificationStatus: 'VERIFIED',
+  };
+  const levelMismatchResult = validateStructureRule(levelMismatchRule);
+  assert(
+    levelMismatchResult.isValid === false &&
+      levelMismatchResult.issues.some((i) => i.field === 'level'),
+    'Validator mendeteksi mismatch antara Level SD dan Grade 8'
+  );
+
+  const unknownSubjectRule: any = {
+    id: 'test-unknown-subject',
+    curriculumType: 'KURIKULUM_MERDEKA',
+    level: 'SD',
+    grade: 1,
+    phase: 'A',
+    subjectCode: 'MAPEL_PALSU_TIDAK_ADA',
+    intrakurikulerAnnualJP: 216,
+    kokurikulerAnnualJP: 72,
+    totalAnnualJP: 288,
+    referenceWeeksPerYear: 36,
+    derivedWeeklyJP: 6,
+    regulationIds: ['REG-PERMENDIKBUDRISTEK-12-2024'],
+    verificationStatus: 'VERIFIED',
+  };
+  const unknownSubResult = validateStructureRule(unknownSubjectRule);
+  assert(
+    unknownSubResult.isValid === false &&
+      unknownSubResult.issues.some((i) => i.field === 'subjectCode'),
+    'Validator mendeteksi subjectCode yang tidak terdaftar di Master'
+  );
+
+  // TEST 14: Regulasi 2025 & Provenance Audit
+  console.log('\n--- 14. Regulasi 2025 & Provenance Audit ---');
+  const reg2025Decision = CURRICULUM_REGULATIONS.find(
+    (r) => r.id === 'DEC-BSKAP-046-2025'
+  );
+  assert(
+    reg2025Decision !== undefined && reg2025Decision.year === 2025,
+    'Keputusan Kepala BSKAP No. 046/H/KR/2025 terdaftar di Regulation Registry'
+  );
+
+  const guide2025 = CURRICULUM_REGULATIONS.find(
+    (r) => r.id === 'GUIDE-BSKAP-PPA-2025'
+  );
+  assert(
+    guide2025 !== undefined && guide2025.year === 2025,
+    'Panduan Pembelajaran dan Asesmen 2025 terdaftar di Regulation Registry'
+  );
+
+  // Verifikasi status CP yang belum dikomparasi dengan BSKAP 046/2025 adalah UNVERIFIED
+  const allCPs = [...SD_CP_ENTRIES, ...SMP_CP_ENTRIES, ...SMA_CP_ENTRIES];
+  const verifiedWithout2025 = allCPs.filter(
+    (cp) => cp.verificationStatus === 'VERIFIED'
+  );
+  assert(
+    verifiedWithout2025.length === 0,
+    'Semua CP yang belum diverifikasi penuh terhadap BSKAP No. 046/H/KR/2025 berstatus UNVERIFIED secara jujur'
+  );
 
   console.log('\n===========================================================');
   console.log('🎉 ALL CURRICULUM MASTER TESTS PASSED SUCCESSFULLY!');
